@@ -98,12 +98,28 @@ pip install -r requirements.txt
 ```
 *(Ghi chú: Quá trình suy luận mô hình chính (Inference) đã được chuyển giao cho ONNX Runtime giúp tăng tốc độ xử lý trên CPU từ 2-3 lần. Tuy nhiên, hệ thống vẫn duy trì thư viện PyTorch trong `requirements.txt` để hỗ trợ giải mã hình học tọa độ khuôn mặt thừa kế và phục vụ các công cụ chuyển đổi).*
 
-### 3. Xuất mô hình sang định dạng ONNX
-Để tăng hiệu năng và giảm thiểu RAM tiêu thụ, bạn cần chạy script chuyển đổi mô hình PyTorch gốc (`.pth`) sang ONNX (`.onnx`):
-```bash
-python export_onnx.py
-```
-Sau khi chạy xong, các mô hình ONNX sẽ tự động được lưu vào thư mục `backend/weights/`. Bạn chỉ cần thực hiện bước này **một lần duy nhất**.
+### 3. Chuẩn bị Mô hình (Weights)
+Dự án sử dụng các mô hình học sâu RetinaFace (định dạng ONNX) để phát hiện khuôn mặt và U-Net để phân vùng. Vì kích thước các mô hình này rất lớn (trên 100MB) và được liệt kê trong `.gitignore`, bạn có thể chuẩn bị chúng bằng **một trong hai cách** sau:
+
+* **Cách 1: Tải tự động (Khuyên dùng)**
+  * Bạn không cần thực hiện thêm bước nào. Khi khởi chạy dự án bằng lệnh `python run.py`, hệ thống sẽ tự động kiểm tra thư mục `backend/weights/`.
+  * Nếu phát hiện thiếu mô hình, code khởi tạo sẽ **tự động tải** các tệp `.onnx` trực tiếp từ GitHub Releases của kho chứa về máy và hiển thị tiến trình tải trực quan.
+
+* **Cách 2: Chuyển đổi thủ công (Nếu bạn đã có sẵn các tệp trọng số PyTorch `.pth` cục bộ)**
+  * Đặt các tệp trọng số PyTorch gốc (`Resnet50_Final.pth`, `mobilenet0.25_Final.pth`, `unet_face_celeb.pth`) vào thư mục `backend/weights/`.
+  * Chạy script chuyển đổi mô hình PyTorch gốc sang ONNX (`.onnx`):
+    ```bash
+    python export_onnx.py
+    ```
+
+> [!IMPORTANT]
+> **Hướng dẫn dành cho Quản trị viên Repo:**
+> Để tính năng Tải tự động hoạt động, quản trị viên cần tạo một bản **Release** trên GitHub của dự án với tag phiên bản là `v1.0.0` và đính kèm (upload) 3 tệp mô hình ONNX sau vào mục Assets của bản Release đó:
+> 1. `unet_face_celeb.onnx`
+> 2. `mobilenet0.25_Final.onnx`
+> 3. `Resnet50_Final.onnx`
+
+---
 
 ### 4. Khởi chạy Server
 Chạy lệnh sau tại thư mục gốc để khởi động máy chủ FastAPI:
