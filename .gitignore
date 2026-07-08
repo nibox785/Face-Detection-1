@@ -15,3 +15,7 @@ backend/weights/
 .idea/
 .gemini/
 .system_generated/
+
+# Virtual environments
+.venv/
+venv/
