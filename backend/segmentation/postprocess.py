@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from segmentation.config import FACE_CLASSES
+from .config import FACE_CLASSES
 
 def logits_to_binary_mask(logits):
     """

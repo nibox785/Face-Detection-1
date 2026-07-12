@@ -8,9 +8,9 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 import torchvision.transforms as transforms
 
-from segmentation.config import MODEL_WEIGHTS_PATH, NUM_CLASSES, INPUT_SIZE, DEVICE
-from segmentation.model import UNet
-from segmentation.dataset import FaceMask
+from .config import MODEL_WEIGHTS_PATH, NUM_CLASSES, INPUT_SIZE, DEVICE
+from .model import UNet
+from .dataset import FaceMask
 
 # Part colors for 20 classes (0: background + 18 classes, plus buffer)
 PART_COLORS = [

@@ -22,6 +22,7 @@ Nó đóng vai trò như một hồ sơ audit cho việc tương tác với AI v
 | 2026-07-08 | Mô tả lại workflow AI + tài liệu trong dự án Face-Detection | v1 | Tạo nội dung AI governance và module đề xuất | admin | reviewer |
 | 2026-07-10 | Thêm và ổn định test cho unit/model/integration, bao gồm segmenter và API detect | v2 | Tạo suite pytest cho face quality, detector, segmentation, integration; sửa lỗi import, shape mock, exception handling; thêm report generation cho /detect | admin | reviewer |
 | 2026-07-10 | Tạo handoff session và lưu prompt summary cho phiên tiếp theo | v3 | Tạo tài liệu handoff và summary cho việc tiếp tục phát triển mà không cần đọc toàn bộ chat cũ | admin | reviewer |
+| 2026-07-13 | Tạo file `.agent` cho phiên Face-Detection, tóm tắt kiến trúc, phase, log inference và các tài liệu cần đọc | v4 | Thêm `.face-detection.agent` để session AI tiếp theo có thể đọc 1 file duy nhất và tiếp cận nhanh hệ thống | admin | reviewer |
 
 ## Nguyên tắc
 

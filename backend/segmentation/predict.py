@@ -5,9 +5,9 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image
 
-from segmentation.config import MODEL_WEIGHTS_PATH, NUM_CLASSES, INPUT_SIZE, DEVICE
-from segmentation.model import UNet
-from segmentation.postprocess import logits_to_binary_mask
+from .config import MODEL_WEIGHTS_PATH, NUM_CLASSES, INPUT_SIZE, DEVICE
+from .model import UNet
+from .postprocess import logits_to_binary_mask
 
 class UNetPredictor:
     def __init__(self, weights_path=MODEL_WEIGHTS_PATH, device=DEVICE):

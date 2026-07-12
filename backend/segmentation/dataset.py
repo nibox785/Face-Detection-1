@@ -6,7 +6,7 @@ import PIL.ImageEnhance as ImageEnhance
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-from segmentation.config import IMAGE_DIR, MASK_DIR, INPUT_SIZE
+from .config import IMAGE_DIR, MASK_DIR, INPUT_SIZE
 
 # ==============================================================================
 # Augmentations (Copied from Project B and optimized)

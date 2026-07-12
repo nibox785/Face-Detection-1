@@ -14,10 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add backend directory to sys.path so inner imports work
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
-from models.face_detector import RetinaFaceDetector
-from models.face_segmenter import UNetFaceSegmenter
-from quality.face_quality import analyze_face_quality
-from utils.reporting import save_detection_report
+from .models.face_detector import RetinaFaceDetector
+from .models.face_segmenter import UNetFaceSegmenter
+from .quality.face_quality import analyze_face_quality
+from .utils.reporting import save_detection_report
+from .app_logging import generate_request_id, log_inference_event
 
 app = FastAPI(title="AI Crowd Face Surveillance API", version="1.0.0")
 
@@ -131,6 +132,7 @@ async def detect(
 ):
     try:
         contents = await image.read()
+        request_id = generate_request_id()
         nparr = np.frombuffer(contents, np.uint8)
         img_raw = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img_raw is None:
@@ -275,6 +277,7 @@ async def detect(
             })
             
         t_latency = int((time.time() - t_start) * 1000)
+        fps = round(1000.0 / max(t_latency, 1), 2)
         
         _, buffer = cv2.imencode('.jpg', annotated_img)
         img_base64 = base64.b64encode(buffer).decode('utf-8')
@@ -283,7 +286,11 @@ async def detect(
             'image': f"data:image/jpeg;base64,{img_base64}",
             'face_count': face_count,
             'faces': faces_data,
-            'latency_ms': t_latency
+            'latency_ms': t_latency,
+            'fps': fps,
+            'request_id': request_id,
+            'network': network,
+            'status': 'ok'
         }
 
         if save_report:
@@ -296,6 +303,21 @@ async def detect(
             payload['report_dir'] = str(report_dir)
             payload['report_url'] = f"/reports/inference/{report_dir.name}"
 
+        log_inference_event(
+            "detect_completed",
+            request_id,
+            network,
+            "pipeline",
+            face_count,
+            t_latency,
+            extra={
+                "threshold": threshold,
+                "draw_mask": draw_mask,
+                "upscale": upscale,
+                "save_report": bool(save_report),
+            }
+        )
+
         return payload
     except Exception as e:
         import traceback
@@ -307,4 +329,4 @@ frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../front
 app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="127.0.0.1", port=5000)
