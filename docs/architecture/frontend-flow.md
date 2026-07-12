@@ -35,3 +35,4 @@ Frontend duy trì các trạng thái như:
 - selectedNetwork để chọn backbone detector
 - currentViewMode để quyết định loại overlay hiển thị
 - stream FPS và latency history cho telemetry
+    

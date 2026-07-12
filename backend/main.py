@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from models.face_detector import RetinaFaceDetector
 from models.face_segmenter import UNetFaceSegmenter
 from quality.face_quality import analyze_face_quality
+from utils.reporting import save_detection_report
 
 app = FastAPI(title="AI Crowd Face Surveillance API", version="1.0.0")
 
@@ -124,7 +125,9 @@ async def detect(
     network: str = Form("mobile0.25"),
     threshold: float = Form(0.5),
     draw_mask: bool = Form(False),
-    upscale: bool = Form(False)
+    upscale: bool = Form(False),
+    save_report: bool = Form(False),
+    report_name: str = Form(None),
 ):
     try:
         contents = await image.read()
@@ -275,13 +278,25 @@ async def detect(
         
         _, buffer = cv2.imencode('.jpg', annotated_img)
         img_base64 = base64.b64encode(buffer).decode('utf-8')
-        
-        return {
+
+        payload = {
             'image': f"data:image/jpeg;base64,{img_base64}",
             'face_count': face_count,
             'faces': faces_data,
             'latency_ms': t_latency
         }
+
+        if save_report:
+            report_dir = save_detection_report(
+                image_input=contents,
+                payload=payload,
+                annotated_image=annotated_img,
+                report_name=report_name or image.filename,
+            )
+            payload['report_dir'] = str(report_dir)
+            payload['report_url'] = f"/reports/inference/{report_dir.name}"
+
+        return payload
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -13,6 +13,9 @@ Mỗi tài liệu chỉ chịu trách nhiệm cho một chủ đề duy nhất.
 | File | Purpose |
 |------|---------|
 | testing-strategy.md | Tổng quan chiến lược kiểm thử |
+| testing-architecture.md | Kiến trúc kiểm thử và các lớp kiểm thử |
+| testing-scope.md | Phạm vi kiểm thử |
+| test-environment.md | Môi trường kiểm thử |
 | unit-testing.md | Unit Test |
 | model-testing.md | Model Validation |
 | integration-testing.md | API Integration |

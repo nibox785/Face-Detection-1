@@ -2,7 +2,11 @@ import os
 import torch
 
 # Paths
-MODEL_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "../weights/unet_face_celeb.pth")
+BASE_DIR = os.path.dirname(__file__)
+MODEL_WEIGHTS_PATH = os.path.join(BASE_DIR, "../weights/unet_face_celeb.pth")
+IMAGE_DIR = os.path.join(BASE_DIR, "../data/CelebA-HQ-img")
+MASK_DIR = os.path.join(BASE_DIR, "../data/mask")
+MASK_ANNO_DIR = os.path.join(BASE_DIR, "../data/CelebAMask-HQ-mask-anno")
 
 # Model Architecture
 NUM_CLASSES = 19  # 18 facial features + 1 background
