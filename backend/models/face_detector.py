@@ -24,10 +24,11 @@ class RetinaFaceDetector:
             
         print(f"Loading RetinaFace ONNX model from {self.weights_path}...")
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = 4
+        intra_threads = int(os.environ.get("ONNX_INTRA_OP_THREADS", "4"))
+        opts.intra_op_num_threads = intra_threads
         opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        self.session = ort.InferenceSession(self.weights_path, sess_options=opts, providers=['CPUExecutionProvider'])
+        self.session = ort.InferenceSession(self.weights_path, sess_options=opts, providers=ort.get_available_providers())
         print("RetinaFace ONNX model loaded successfully.")
 
     def detect(self, img_raw, confidence_threshold=0.5, nms_threshold=0.4, upscale=False):

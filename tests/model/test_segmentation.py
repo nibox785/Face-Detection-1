@@ -109,3 +109,43 @@ def test_preprocess_single_mask_combines_attribute_masks(tmp_path, monkeypatch):
     assert saved_mask.shape == (512, 512)
     assert np.count_nonzero(saved_mask) > 0
     assert saved_mask[0, 0] in {0, 1}
+
+
+def test_unet_face_segmenter_onnx_pipeline(monkeypatch):
+    from backend.models.face_segmenter import UNetFaceSegmenter
+
+    class DummyUNetSession:
+        def get_inputs(self):
+            return [type("Input", (), {"name": "input", "shape": [1, 3, 128, 128]})()]
+
+        def run(self, output_names, input_feed, run_options=None):
+            input_tensor = list(input_feed.values())[0]
+            batch_size = input_tensor.shape[0]
+            logits = np.zeros((batch_size, 19, 128, 128), dtype=np.float32)
+            logits[:, 1, :, :] = 1.0  # Class 1 (foreground)
+            return [logits]
+
+    monkeypatch.setattr(
+        "backend.models.face_segmenter.ort.InferenceSession",
+        lambda *args, **kwargs: DummyUNetSession()
+    )
+
+    segmenter = UNetFaceSegmenter(weights_path="dummy.onnx")
+    
+    # Test predict (single image)
+    img_bgr = np.zeros((100, 120, 3), dtype=np.uint8)
+    mask = segmenter.predict(img_bgr)
+    assert mask.shape == (100, 120)
+    assert np.all(mask == 255)
+
+    # Test predict_batch (multiple images)
+    crops = [
+        np.zeros((50, 60, 3), dtype=np.uint8),
+        np.zeros((80, 80, 3), dtype=np.uint8)
+    ]
+    masks = segmenter.predict_batch(crops)
+    assert len(masks) == 2
+    assert masks[0].shape == (50, 60)
+    assert masks[1].shape == (80, 80)
+    assert np.all(masks[0] == 255)
+    assert np.all(masks[1] == 255)

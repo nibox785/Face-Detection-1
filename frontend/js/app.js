@@ -38,6 +38,7 @@ const chkLandm = document.getElementById('chk-landm');
 const chkConf = document.getElementById('chk-conf');
 const chkFaceid = document.getElementById('chk-faceid');
 const chkFacequality = document.getElementById('chk-facequality');
+const chkSound = document.getElementById('chk-sound');
 
 // View Mode presets buttons
 const btnModeNormal = document.getElementById('btn-mode-normal');
@@ -96,6 +97,9 @@ function initAudio() {
 }
 
 function playBeep(frequency = 440, duration = 0.15, type = 'sine') {
+    if (chkSound && !chkSound.checked) {
+        return;
+    }
     try {
         initAudio();
         if (audioCtx.state === 'suspended') {
@@ -764,7 +768,7 @@ fileUploaderInput.addEventListener('change', async (e) => {
     formData.append('image', file);
     formData.append('network', selectedNetwork);
     formData.append('threshold', sliderConfThresh.value);
-    formData.append('draw_mask', 'true');
+    formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
     formData.append('upscale', 'true');
 
     const tStart = performance.now();
@@ -872,10 +876,23 @@ async function processWebcamSurveillanceLoop() {
     isLoopProcessing = true;
     lblHudResolution.textContent = `${webcamRawFeed.videoWidth}x${webcamRawFeed.videoHeight}`;
 
+    const maxDim = 640;
+    let vw = webcamRawFeed.videoWidth;
+    let vh = webcamRawFeed.videoHeight;
+    if (vw > maxDim || vh > maxDim) {
+        if (vw > vh) {
+            vh = Math.round((vh * maxDim) / vw);
+            vw = maxDim;
+        } else {
+            vw = Math.round((vw * maxDim) / vh);
+            vh = maxDim;
+        }
+    }
+
     const offCanvas = document.createElement('canvas');
-    offCanvas.width = webcamRawFeed.videoWidth;
-    offCanvas.height = webcamRawFeed.videoHeight;
-    offCanvas.getContext('2d').drawImage(webcamRawFeed, 0, 0);
+    offCanvas.width = vw;
+    offCanvas.height = vh;
+    offCanvas.getContext('2d').drawImage(webcamRawFeed, 0, 0, vw, vh);
 
     offCanvas.toBlob(async (blob) => {
         if (!blob) {
@@ -888,7 +905,7 @@ async function processWebcamSurveillanceLoop() {
         formData.append('image', blob, 'webcam.jpg');
         formData.append('network', selectedNetwork);
         formData.append('threshold', sliderConfThresh.value);
-        formData.append('draw_mask', 'true');
+        formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
         formData.append('upscale', 'false');
 
         const tStart = performance.now();
@@ -911,6 +928,21 @@ async function processWebcamSurveillanceLoop() {
                 lblTelemetryFps.textContent = streamFps;
                 lblHeaderFps.textContent = streamFps;
 
+                // Scale back coordinates to match original video dimensions
+                const scaleX = webcamRawFeed.videoWidth / vw;
+                const scaleY = webcamRawFeed.videoHeight / vh;
+                if (result.faces && (scaleX !== 1 || scaleY !== 1)) {
+                    result.faces.forEach(f => {
+                        f.box = [f.box[0] * scaleX, f.box[1] * scaleY, f.box[2] * scaleX, f.box[3] * scaleY];
+                        if (f.landmarks) {
+                            for (let idx = 0; idx < 5; idx++) {
+                                f.landmarks[2 * idx] *= scaleX;
+                                f.landmarks[2 * idx + 1] *= scaleY;
+                            }
+                        }
+                    });
+                }
+
                 matchCanvasToMedia(webcamRawFeed);
                 handleDetectionResults(result, latency);
             }
@@ -921,10 +953,10 @@ async function processWebcamSurveillanceLoop() {
             if (isWebcamStreaming) {
                 setTimeout(() => {
                     requestAnimationFrame(processWebcamSurveillanceLoop);
-                }, 80); // Restricting FPS to lower local CPU load
+                }, 0);
             }
         }
-    }, 'image/jpeg', 0.85);
+    }, 'image/jpeg', 0.70);
 }
 
 // Local Video Stream Loop
@@ -975,10 +1007,23 @@ async function processVideoFileSurveillanceLoop() {
     isLoopProcessing = true;
     lblHudResolution.textContent = `${videoFileFeed.videoWidth}x${videoFileFeed.videoHeight}`;
 
+    const maxDim = 640;
+    let vw = videoFileFeed.videoWidth;
+    let vh = videoFileFeed.videoHeight;
+    if (vw > maxDim || vh > maxDim) {
+        if (vw > vh) {
+            vh = Math.round((vh * maxDim) / vw);
+            vw = maxDim;
+        } else {
+            vw = Math.round((vw * maxDim) / vh);
+            vh = maxDim;
+        }
+    }
+
     const offCanvas = document.createElement('canvas');
-    offCanvas.width = videoFileFeed.videoWidth;
-    offCanvas.height = videoFileFeed.videoHeight;
-    offCanvas.getContext('2d').drawImage(videoFileFeed, 0, 0);
+    offCanvas.width = vw;
+    offCanvas.height = vh;
+    offCanvas.getContext('2d').drawImage(videoFileFeed, 0, 0, vw, vh);
 
     offCanvas.toBlob(async (blob) => {
         if (!blob) {
@@ -991,7 +1036,7 @@ async function processVideoFileSurveillanceLoop() {
         formData.append('image', blob, 'video_frame.jpg');
         formData.append('network', selectedNetwork);
         formData.append('threshold', sliderConfThresh.value);
-        formData.append('draw_mask', 'true');
+        formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
         formData.append('upscale', 'false');
 
         const tStart = performance.now();
@@ -1014,6 +1059,21 @@ async function processVideoFileSurveillanceLoop() {
                 lblTelemetryFps.textContent = streamFps;
                 lblHeaderFps.textContent = streamFps;
 
+                // Scale back coordinates to match original video dimensions
+                const scaleX = videoFileFeed.videoWidth / vw;
+                const scaleY = videoFileFeed.videoHeight / vh;
+                if (result.faces && (scaleX !== 1 || scaleY !== 1)) {
+                    result.faces.forEach(f => {
+                        f.box = [f.box[0] * scaleX, f.box[1] * scaleY, f.box[2] * scaleX, f.box[3] * scaleY];
+                        if (f.landmarks) {
+                            for (let idx = 0; idx < 5; idx++) {
+                                f.landmarks[2 * idx] *= scaleX;
+                                f.landmarks[2 * idx + 1] *= scaleY;
+                            }
+                        }
+                    });
+                }
+
                 matchCanvasToMedia(videoFileFeed);
                 handleDetectionResults(result, latency);
             }
@@ -1024,20 +1084,33 @@ async function processVideoFileSurveillanceLoop() {
             if (isVideoStreaming) {
                 setTimeout(() => {
                     requestAnimationFrame(processVideoFileSurveillanceLoop);
-                }, 100);
+                }, 0);
             }
         }
-    }, 'image/jpeg', 0.85);
+    }, 'image/jpeg', 0.70);
 }
 
 // Single seeked processing
 videoFileFeed.addEventListener('seeked', async () => {
     if (videoFileFeed.videoWidth === 0 || videoFileFeed.videoHeight === 0) return;
 
+    const maxDim = 640;
+    let vw = videoFileFeed.videoWidth;
+    let vh = videoFileFeed.videoHeight;
+    if (vw > maxDim || vh > maxDim) {
+        if (vw > vh) {
+            vh = Math.round((vh * maxDim) / vw);
+            vw = maxDim;
+        } else {
+            vw = Math.round((vw * maxDim) / vh);
+            vh = maxDim;
+        }
+    }
+
     const offCanvas = document.createElement('canvas');
-    offCanvas.width = videoFileFeed.videoWidth;
-    offCanvas.height = videoFileFeed.videoHeight;
-    offCanvas.getContext('2d').drawImage(videoFileFeed, 0, 0);
+    offCanvas.width = vw;
+    offCanvas.height = vh;
+    offCanvas.getContext('2d').drawImage(videoFileFeed, 0, 0, vw, vh);
 
     const tStart = performance.now();
 
@@ -1047,7 +1120,7 @@ videoFileFeed.addEventListener('seeked', async () => {
         formData.append('image', blob, 'seek_frame.jpg');
         formData.append('network', selectedNetwork);
         formData.append('threshold', sliderConfThresh.value);
-        formData.append('draw_mask', 'true');
+        formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
         formData.append('upscale', 'false');
 
         try {
@@ -1059,13 +1132,29 @@ videoFileFeed.addEventListener('seeked', async () => {
                 const result = await response.json();
                 const tEnd = performance.now();
                 const latency = Math.round(tEnd - tStart);
+
+                // Scale back coordinates to match original video dimensions
+                const scaleX = videoFileFeed.videoWidth / vw;
+                const scaleY = videoFileFeed.videoHeight / vh;
+                if (result.faces && (scaleX !== 1 || scaleY !== 1)) {
+                    result.faces.forEach(f => {
+                        f.box = [f.box[0] * scaleX, f.box[1] * scaleY, f.box[2] * scaleX, f.box[3] * scaleY];
+                        if (f.landmarks) {
+                            for (let idx = 0; idx < 5; idx++) {
+                                f.landmarks[2 * idx] *= scaleX;
+                                f.landmarks[2 * idx + 1] *= scaleY;
+                            }
+                        }
+                    });
+                }
+
                 matchCanvasToMedia(videoFileFeed);
                 handleDetectionResults(result, latency);
             }
         } catch (err) {
             console.error("Single seek frame error:", err);
         }
-    }, 'image/jpeg', 0.85);
+    }, 'image/jpeg', 0.70);
 });
 
 // ==============================================================================

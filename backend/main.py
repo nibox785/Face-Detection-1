@@ -6,7 +6,7 @@ import time
 import numpy as np
 import cv2
 import uvicorn
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +17,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from models.face_detector import RetinaFaceDetector
 from models.face_segmenter import UNetFaceSegmenter
 from quality.face_quality import analyze_face_quality
-from utils.reporting import save_detection_report
+from utils.reporting import save_detection_report, sanitize_name, DEFAULT_REPORT_ROOT
 
 app = FastAPI(title="AI Crowd Face Surveillance API", version="1.0.0")
 
@@ -119,6 +119,10 @@ def get_index():
     with open(index_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "timestamp": time.time()}
+
 @app.post("/detect")
 async def detect(
     image: UploadFile = File(...),
@@ -128,6 +132,7 @@ async def detect(
     upscale: bool = Form(False),
     save_report: bool = Form(False),
     report_name: str = Form(None),
+    background_tasks: BackgroundTasks = None,
 ):
     try:
         contents = await image.read()
@@ -147,23 +152,24 @@ async def detect(
         unet_crops = []
         unet_indices = []
         
-        for idx, face in enumerate(faces_list):
-            box_coords = face['box']
-            x1, y1, x2, y2 = map(int, box_coords[:4])
-            x1 = max(0, x1)
-            y1 = max(0, y1)
-            x2 = min(w, x2)
-            y2 = min(h, y2)
-            
-            rect_w = x2 - x1
-            rect_h = y2 - y1
-            
-            if rect_w * rect_h < 400 or rect_w <= 4 or rect_h <= 4:
-                continue
-            
-            face_crop = img_raw[y1:y2, x1:x2]
-            unet_crops.append(face_crop)
-            unet_indices.append(idx)
+        if draw_mask:
+            for idx, face in enumerate(faces_list):
+                box_coords = face['box']
+                x1, y1, x2, y2 = map(int, box_coords[:4])
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                x2 = min(w, x2)
+                y2 = min(h, y2)
+                
+                rect_w = x2 - x1
+                rect_h = y2 - y1
+                
+                if rect_w * rect_h < 4096 or rect_w <= 10 or rect_h <= 10:
+                    continue
+                
+                face_crop = img_raw[y1:y2, x1:x2]
+                unet_crops.append(face_crop)
+                unet_indices.append(idx)
             
         # 2. Run batched U-Net segmentation
         unet_masks = []
@@ -287,16 +293,31 @@ async def detect(
         }
 
         if save_report:
-            report_dir = save_detection_report(
-                image_input=contents,
-                payload=payload,
-                annotated_image=annotated_img,
-                report_name=report_name or image.filename,
-            )
+            report_dir_name = sanitize_name(report_name or image.filename)
+            report_dir = DEFAULT_REPORT_ROOT / report_dir_name
+            
+            if background_tasks is not None:
+                background_tasks.add_task(
+                    save_detection_report,
+                    image_input=contents,
+                    payload=payload.copy(),
+                    annotated_image=annotated_img.copy() if annotated_img is not None else None,
+                    report_name=report_dir_name
+                )
+            else:
+                save_detection_report(
+                    image_input=contents,
+                    payload=payload,
+                    annotated_image=annotated_img,
+                    report_name=report_dir_name
+                )
+                
             payload['report_dir'] = str(report_dir)
             payload['report_url'] = f"/reports/inference/{report_dir.name}"
 
         return payload
+    except HTTPException as he:
+        raise he
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -13,11 +13,22 @@ class UNetFaceSegmenter:
             
         print(f"Loading U-Net Face Segmenter ONNX model from {weights_path}...")
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = 4
+        intra_threads = int(os.environ.get("ONNX_INTRA_OP_THREADS", "4"))
+        opts.intra_op_num_threads = intra_threads
         opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        self.session = ort.InferenceSession(weights_path, sess_options=opts, providers=['CPUExecutionProvider'])
+        self.session = ort.InferenceSession(weights_path, sess_options=opts, providers=ort.get_available_providers())
         print("U-Net Face Segmenter ONNX model loaded successfully.")
+
+        # Dynamically determine the model's expected input shape
+        input_shape = self.session.get_inputs()[0].shape
+        try:
+            self.input_height = int(input_shape[2])
+            self.input_width = int(input_shape[3])
+        except Exception:
+            self.input_height = INPUT_SIZE[0]
+            self.input_width = INPUT_SIZE[1]
+        print(f"U-Net expected input size: {self.input_width}x{self.input_height}")
 
         # Input image normalization constants (ImageNet standards)
         self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -50,8 +61,8 @@ class UNetFaceSegmenter:
             # Convert BGR (OpenCV) to RGB
             crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
             
-            # Resize to U-Net input size (512x512)
-            resized_img = cv2.resize(crop_rgb, INPUT_SIZE, interpolation=cv2.INTER_LINEAR)
+            # Resize to U-Net input size dynamically
+            resized_img = cv2.resize(crop_rgb, (self.input_width, self.input_height), interpolation=cv2.INTER_LINEAR)
             
             # Scale to [0, 1] and normalize using numpy
             img_normalized = (resized_img.astype(np.float32) / 255.0 - self.mean) / self.std
@@ -100,8 +111,8 @@ class UNetFaceSegmenter:
         # Convert BGR (OpenCV) to RGB
         face_crop_rgb = cv2.cvtColor(face_crop_bgr, cv2.COLOR_BGR2RGB)
         
-        # Resize to U-Net input size (512x512)
-        resized_img = cv2.resize(face_crop_rgb, INPUT_SIZE, interpolation=cv2.INTER_LINEAR)
+        # Resize to U-Net input size dynamically
+        resized_img = cv2.resize(face_crop_rgb, (self.input_width, self.input_height), interpolation=cv2.INTER_LINEAR)
         
         # Scale to [0, 1] and normalize using numpy
         img_normalized = (resized_img.astype(np.float32) / 255.0 - self.mean) / self.std

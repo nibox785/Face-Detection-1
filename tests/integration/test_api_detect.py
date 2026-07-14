@@ -39,7 +39,7 @@ def test_root_endpoint_returns_html(client):
 def test_detect_with_invalid_image_returns_400(client):
     files = {"image": ("bad.jpg", b"not-an-image", "image/jpeg")}
     response = client.post("/detect", files=files)
-    assert response.status_code == 500
+    assert response.status_code == 400
 
 
 def test_detect_with_valid_image_returns_expected_structure(client):
@@ -68,3 +68,11 @@ def test_detect_with_valid_image_returns_expected_structure(client):
     assert payload["faces"][0]["mask_rle"]["start_val"] in {0, 1}
     assert "report_dir" in payload
     assert "report_url" in payload
+
+
+def test_health_check(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert "timestamp" in data
