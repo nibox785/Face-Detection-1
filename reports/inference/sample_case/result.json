@@ -83,5 +83,9 @@
       "rating": "Unusable"
     }
   ],
-  "latency_ms": 4
+  "latency_ms": 5,
+  "fps": 200.0,
+  "request_id": "c67bbe8d-f03e-4eea-9e45-c2f88e774689",
+  "network": "mobile0.25",
+  "status": "ok"
 }

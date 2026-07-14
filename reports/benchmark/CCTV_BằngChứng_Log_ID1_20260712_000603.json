@@ -1,0 +1,10 @@
+{
+    "time": "2026-07-12 00:06:03",
+    "face_id": 1,
+    "detection_confidence": 1,
+    "visibility_percent": 85,
+    "quality_score": 91,
+    "status_alert": "Head Left",
+    "pose_estimation": "Head Left",
+    "rating_decision": "Excellent"
+}

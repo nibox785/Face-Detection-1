@@ -1,0 +1,83 @@
+# Face Detection Session Agent
+
+## Mục đích
+
+File này là chân thứ nhất cho phiên làm việc hiện tại của dự án Face-Detection.
+Nó tóm tắt kiến trúc hệ thống, công việc đã làm, các phase, nội dung quan trọng, và các file cần đọc để một session AI mới có thể tiếp cận nhanh.
+
+## Summary & Conclusion
+
+- Hệ thống backend chính là `backend/main.py`, triển khai API `/detect` cho inference face detection và segmentation.
+- Backend dùng FastAPI và ONNX runtime để chạy các mô hình RetinaFace và U-Net.
+- Logging được xây dựng theo kiểu structured JSON trong `backend/app_logging/structured_logger.py`, với docs hướng dẫn ở `docs/logging/inference-log.md` và `docs/logging/README.md`.
+- Mục tiêu chính của phiên này là: hoàn thiện inference logging, benchmark metadata, response correlation và tạo tài liệu cho log/system summary.
+- Lỗi kỹ thuật chính đã fix: import package-relative trong backend để tránh `ModuleNotFoundError` với `data`, `utils`, `segmentation` khi chạy `backend` như package.
+
+## Kiến trúc hệ thống hiện tại
+
+- `backend/main.py`: API server, endpoint `/detect`, request parsing, inference pipeline, logging integration.
+- `backend/app_logging/structured_logger.py`: formatter JSON, event logger, inference/benchmark log helpers.
+- `backend/benchmark/runner.py`: benchmark entrypoint và metric runner cho detector/segmenter.
+- `backend/models/`, `backend/segmentation/`: chứa module detector, segmenter, preprocessing và postprocessing.
+- `backend/utils/`: helper utilities cho box utils, reporting, timer, logger, NMS.
+- `tests/`: suite pytest chia theo `unit`, `model`, `integration`; focus vào behavior API và model wrapper.
+- `docs/logging/`: tài liệu log inference, benchmark và cấu trúc logging.
+- `docs/ai/`: quản trị AI, session handoff, prompt history, decision log.
+
+## Các phase làm việc
+
+1. Phase 0 - Khảo sát & review: ✅ Hoàn thành
+   - Đọc cấu trúc repo, docs hiện có, xác định backend package import problem.
+   - Định nghĩa logging/benchmark schema.
+2. Phase 1 - Triển khai và sửa lỗi nội bộ: ✅ Hoàn thành
+   - Sửa import backend bằng package-relative imports.
+   - Gắn structured inference logging vào `backend/main.py`.
+   - Tạo tài liệu `docs/logging/inference-log.md`.
+   - Cập nhật `docs/logging/README.md` để nhấn nhóm log và file log chính.
+3. Phase 2 - Hoàn thiện benchmark và docs (Pending / đề xuất): ☐
+   - Hoàn thiện benchmark runner metadata.
+   - Thêm log benchmark mẫu, báo cáo metrics, và sample logs trong docs.
+   - Xây dựng phương án batch evaluation và HTML report index.
+4. Phase 3 - Validation & mở rộng: ☐
+   - Chạy pytest toàn diện.
+   - Thêm test end-to-end với mô hình thật và ảnh thật.
+   - Mở rộng logging/tracing phục vụ debug production.
+
+## Nội dung quan trọng ngoài bug import
+
+- Structured logging inference: `request_id`, `latency_ms`, `fps`, `face_count`, `model`, `stage`, `status`, `extra`.
+- Log correlation giữa response `/detect` và entry log.
+- Documented logging files: `docs/logging/inference-log.md`.
+- Kiến trúc backend: FastAPI + ONNX + pipeline detector/segmenter.
+- Template cho session AI tiếp theo: đọc đúng file `.agent` này, sau đó các tài liệu chính và source file được liệt kê.
+- Nếu cần lưu lại chat prompt và discussion quan trọng, nên cập nhật `docs/ai/prompt-history.md` và `docs/ai/decision-log.md`.
+
+## File cần đọc đầu tiên
+
+1. `.face-detection.agent` (file này)
+2. `docs/ai/session-handoff.md`
+3. `docs/logging/inference-log.md`
+4. `docs/logging/README.md`
+5. `backend/main.py`
+6. `backend/app_logging/structured_logger.py`
+7. `backend/benchmark/runner.py`
+8. `tests/integration/test_api_detect.py`
+9. `tests/model/test_segmentation.py`
+10. `plan.md` và `README.md`
+
+## Hướng dẫn cho session mới
+
+- Bắt đầu bằng việc đọc file này để nắm tổng quan.
+- Sau đó đọc các tài liệu logging và session-handoff.
+- Kiểm tra các file source backend chính để hiểu flow inference và log.
+- Chạy các command kiểm tra môi trường:
+  - `.\.venv\Scripts\Activate.ps1`
+  - `python -m pytest tests/unit tests/model tests/integration -q`
+  - `python -m py_compile backend/main.py`
+
+## Ghi chú cho AI tiếp theo
+
+- Mục tiêu hiện tại là ổn định inferencing pipeline, logging và benchmark metadata.
+- Tránh sửa đổi hệ thống import nữa, focus vào feature/metrics/logging.
+- Giữ session mới đọc một file duy nhất là `.face-detection.agent`, rồi mở rộng theo danh sách file đề xuất.
+- Nếu cần, update ngay `docs/ai/prompt-history.md` và `docs/ai/decision-log.md` để ghi lại prompt và quyết định quan trọng.

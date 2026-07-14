@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import onnxruntime as ort
 
-from data.config import cfg_mnet, cfg_re50
-from layers.functions.prior_box import PriorBox
-from utils.box_utils import decode, decode_landm
-from utils.nms.py_cpu_nms import py_cpu_nms
+from ..data.config import cfg_mnet, cfg_re50
+from ..layers.functions.prior_box import PriorBox
+from ..utils.box_utils import decode, decode_landm
+from ..utils.nms.py_cpu_nms import py_cpu_nms
 
 class RetinaFaceDetector:
     def __init__(self, network_name="mobile0.25", weights_dir=None):

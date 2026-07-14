@@ -3,8 +3,8 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
-from segmentation.config import INPUT_SIZE, FACE_CLASSES
-from segmentation.postprocess import logits_to_binary_mask
+from ..segmentation.config import INPUT_SIZE, FACE_CLASSES
+from ..segmentation.postprocess import logits_to_binary_mask
 
 class UNetFaceSegmenter:
     def __init__(self, weights_path=None):

@@ -5,12 +5,12 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 from torch.optim import Adam
 
-from segmentation.config import (
+from .config import (
     MODEL_WEIGHTS_PATH, NUM_CLASSES, BATCH_SIZE, 
     LEARNING_RATE, NUM_EPOCHS, DEVICE, CROP_SIZE
 )
-from segmentation.model import UNet
-from segmentation.dataset import FaceMask
+from .model import UNet
+from .dataset import FaceMask
 
 def train(args):
     device = torch.device(args.device)

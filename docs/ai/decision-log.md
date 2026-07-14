@@ -13,6 +13,12 @@ Mỗi quyết định nên nêu rõ:
 - Lý do cơ bản cho quyết định.
 - Tác động đến tài liệu hoặc quy trình liên quan.
 
+## Quyết định phiên 2026-07-13
+
+- Quyết định ghi nhận: dùng file `.face-detection.agent` tại gốc workspace như điểm khởi đầu duy nhất cho AI session tiếp theo. File này phải chứa tóm tắt kiến trúc, phase, file ưu tiên đọc và hướng dẫn kiểm tra.
+- Quyết định logging: mở rộng tài liệu `docs/logging/inference-log.md` và `docs/logging/README.md` để làm rõ structured JSON logging và schema của event inference.
+- Quyết định kỹ thuật: giữ import backend theo package-relative để backend chạy ổn định, tránh sửa lỗi import lại trong các phase tiếp theo.
+
 ## Yêu cầu
 
 - Các quyết định quan trọng nên được ghi nhận ngay khi được đưa ra.
