@@ -42,7 +42,7 @@ def check_occlusion(visibility_pct):
     """
     Check if the face is occluded based on mask visibility percentage.
     """
-    if visibility_pct < 65:
+    if visibility_pct < 40:
         return True
     return False
 

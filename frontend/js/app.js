@@ -27,6 +27,8 @@ const badgeStreamLive = document.getElementById('badge-stream-live');
 // Control panel inputs
 const sliderConfThresh = document.getElementById('slider-conf-thresh');
 const lblSliderThreshVal = document.getElementById('lbl-slider-thresh-val');
+const sliderMinFacePx = document.getElementById('slider-min-face-px');
+const lblSliderMinFaceVal = document.getElementById('lbl-slider-min-face-val');
 const btnNetMnet = document.getElementById('btn-net-mnet');
 const btnNetResnet = document.getElementById('btn-net-resnet');
 const lblDetectorBackbone = document.getElementById('lbl-detector-backbone');
@@ -74,6 +76,13 @@ let facesData = [];
 let currentViewMode = 'segment'; // Default mode
 let selectedNetwork = 'mobile0.25';
 let selectedFaceId = null;
+const faceImageCache = {}; // Cache of face_id -> { src: base64_str, img: Image_obj, loaded: bool }
+let previousFaceIds = [];
+let lastChartUpdateTime = 0;
+const faceAlertStates = {}; // Cache of face_id -> { lastStatus: string, lastSeen: timestamp }
+let lastDensityLevel = 'LOW';
+const sessionFaceDatabase = {}; // Persistent database of detected faces in the current session
+let previousSessionIds = []; // Cache of session face IDs for in-place DOM updates
 
 let isWebcamStreaming = false;
 let isVideoStreaming = false;
@@ -224,6 +233,12 @@ function initCharts() {
 }
 
 function updateCharts(faces) {
+    const now = performance.now();
+    if (now - lastChartUpdateTime < 500) {
+        return;
+    }
+    lastChartUpdateTime = now;
+
     // 1. Donut quality update
     let qCounts = { Excellent: 0, Good: 0, Acceptable: 0, Poor: 0, Unusable: 0 };
     faces.forEach(f => {
@@ -267,6 +282,13 @@ btnClearAlerts.addEventListener('click', () => {
             <span>Hệ thống giám sát: Đã dọn dẹp nhật ký.</span>
         </div>
     `;
+    // Clear targets gallery as well
+    Object.keys(sessionFaceDatabase).forEach(key => delete sessionFaceDatabase[key]);
+    previousSessionIds = [];
+    lblGalleryCount.textContent = "TỔNG SỐ: 0 MỤC TIÊU";
+    galleryContainerEl.innerHTML = `
+        <div style="color: var(--text-muted); font-size: 0.75rem; width: 100%; text-align: center; font-style: italic;">Không có mục tiêu nào trong khung nhìn</div>
+    `;
 });
 
 function pushAlertLog(message, level = 'normal') {
@@ -290,6 +312,12 @@ sliderConfThresh.addEventListener('input', (e) => {
     lblSliderThreshVal.textContent = parseFloat(e.target.value).toFixed(2);
     drawAllAnnotations();
 });
+
+if (sliderMinFacePx) {
+    sliderMinFacePx.addEventListener('input', (e) => {
+        lblSliderMinFaceVal.textContent = parseInt(e.target.value) + ' px';
+    });
+}
 
 btnNetMnet.addEventListener('click', () => {
     btnNetMnet.classList.add('active');
@@ -383,11 +411,23 @@ function drawAllAnnotations() {
         const rw = x2 - x1;
         const rh = y2 - y1;
 
-        // A. Draw Mask Overlay
+        // A. Draw Mask Overlay (Cached & optimized to avoid base64 decoding on every frame)
         if (drawMask && face.face_png_alpha) {
-            const maskImg = new Image();
-            maskImg.src = face.face_png_alpha;
-            maskImg.onload = function () {
+            let cache = faceImageCache[face.id];
+            if (!cache || cache.src !== face.face_png_alpha) {
+                const img = new Image();
+                cache = { src: face.face_png_alpha, img: img, loaded: false };
+                faceImageCache[face.id] = cache;
+                img.src = face.face_png_alpha;
+                img.onload = function () {
+                    cache.loaded = true;
+                    // Trigger redraw to show the newly loaded mask
+                    drawAllAnnotations();
+                };
+            }
+            
+            if (cache.loaded) {
+                const maskImg = cache.img;
                 const pad = Math.min(15, Math.floor(Math.max(rw, rh) * 0.1));
                 const px1 = Math.max(0, x1 - pad);
                 const py1 = Math.max(0, y1 - pad);
@@ -432,7 +472,7 @@ function drawAllAnnotations() {
                 oCtx.drawImage(maskImg, 0, 0);
 
                 ctx.drawImage(outlineCanvas, px1, py1, pw, ph);
-            };
+            }
         }
 
         // B. Bounding Boxes
@@ -573,7 +613,7 @@ function handleDetectionResults(result, latencyMs) {
     lblTelemetryLatency.textContent = `${latencyMs} ms`;
     lblHeaderLoad.textContent = `${latencyMs}ms`;
 
-    // Crowd Alarm checks
+    // Crowd Alarm checks (Optimized to transition-based alerts)
     let densityPercentage = Math.min(100, Math.round((count / 12) * 100));
     let densityLevel = 'LOW';
     let densityColor = 'var(--success)';
@@ -581,27 +621,70 @@ function handleDetectionResults(result, latencyMs) {
     if (count >= 8) {
         densityLevel = 'HIGH';
         densityColor = 'var(--danger)';
-        pushAlertLog(`CẢNH BÁO ĐÁM ĐÔNG: Mật độ khuôn mặt cao (${count} đối tượng).`, "danger");
-        playBeep(440, 0.35, 'sawtooth');
     } else if (count >= 4) {
         densityLevel = 'MEDIUM';
         densityColor = 'var(--warning)';
-        pushAlertLog(`Cảnh báo: Mật độ đám đông tăng (${count} đối tượng).`, "warning");
-        playBeep(880, 0.15, 'triangle');
     }
+
+    if (densityLevel !== lastDensityLevel) {
+        if (densityLevel === 'HIGH') {
+            pushAlertLog(`🚨 CẢNH BÁO ĐÁM ĐÔNG: Mật độ khuôn mặt cao (${count} đối tượng).`, "danger");
+            playBeep(440, 0.35, 'sawtooth');
+        } else if (densityLevel === 'MEDIUM') {
+            pushAlertLog(`⚠️ Cảnh báo: Mật độ đám đông tăng (${count} đối tượng).`, "warning");
+            playBeep(880, 0.15, 'triangle');
+        } else if (densityLevel === 'LOW') {
+            pushAlertLog(`✅ Mật độ đám đông đã trở lại bình thường.`, "success");
+        }
+        lastDensityLevel = densityLevel;
+    }
+
     lblTelemetryDensity.textContent = `${densityLevel} (${densityPercentage}%)`;
     lblTelemetryDensity.style.color = densityColor;
 
-    // Checks for face warnings
+    // Target Event & Status warnings (Optimized to transition-based event alerts)
+    const currentActiveIds = facesData.map(f => f.id);
+
     facesData.forEach(face => {
         const idStr = face.id.toString().padStart(2, '0');
-        if (face.status === 'Face Too Small') {
-            pushAlertLog(`Mục tiêu #${idStr}: Kích thước mặt quá nhỏ so với tiêu chuẩn.`, "warning");
-        } else if (face.status === 'Face Occluded') {
-            pushAlertLog(`CẢNH BÁO MỤC TIÊU #${idStr}: Vùng mặt bị che khuất / đeo mặt nạ!`, "danger");
-            playBeep(520, 0.25, 'triangle');
-        } else if (face.status === 'Low Confidence') {
-            pushAlertLog(`Mục tiêu #${idStr}: Độ tin cậy nhận diện thấp.`, "warning");
+
+        // Target appearance (New face ID)
+        if (!faceAlertStates[face.id]) {
+            faceAlertStates[face.id] = { lastStatus: 'Normal', lastSeen: Date.now() };
+            pushAlertLog(`🆕 ĐÃ PHÁT HIỆN MỤC TIÊU MỚI: TARGET #${idStr}`, "success");
+            playBeep(660, 0.15, 'sine');
+        }
+
+        faceAlertStates[face.id].lastSeen = Date.now();
+
+        // Individual Status Changes
+        const state = faceAlertStates[face.id];
+        const currentStatus = face.status;
+
+        if (currentStatus !== state.lastStatus) {
+            if (currentStatus === 'Face Too Small') {
+                pushAlertLog(`Mục tiêu #${idStr}: Kích thước mặt quá nhỏ so với tiêu chuẩn.`, "warning");
+            } else if (currentStatus === 'Face Occluded') {
+                pushAlertLog(`⚠️ CẢNH BÁO MỤC TIÊU #${idStr}: Vùng mặt bị che khuất / đeo mặt nạ!`, "danger");
+                playBeep(520, 0.25, 'triangle');
+            } else if (currentStatus === 'Low Confidence') {
+                pushAlertLog(`Mục tiêu #${idStr}: Độ tin cậy nhận diện thấp.`, "warning");
+            } else if (currentStatus === 'Normal' && state.lastStatus !== 'Normal') {
+                // Recovered to normal
+                pushAlertLog(`✅ Mục tiêu #${idStr}: Trạng thái nhận diện đã bình thường trở lại.`, "success");
+            }
+            state.lastStatus = currentStatus;
+        }
+    });
+
+    // Target disappearance (Lost face ID)
+    Object.keys(faceAlertStates).forEach(faceIdStr => {
+        const faceId = parseInt(faceIdStr, 10);
+        if (!currentActiveIds.includes(faceId)) {
+            const idStr = faceId.toString().padStart(2, '0');
+            pushAlertLog(`❌ MỤC TIÊU ĐÃ RỜI ĐI: TARGET #${idStr}`, "normal");
+            playBeep(330, 0.2, 'sine');
+            delete faceAlertStates[faceId];
         }
     });
 
@@ -612,46 +695,154 @@ function handleDetectionResults(result, latencyMs) {
     btnSnapshot.disabled = disableButtons;
     btnExportResult.disabled = disableButtons;
 
-    // Render gallery thumbnails
-    lblGalleryCount.textContent = `TỔNG SỐ: ${count} MỤC TIÊU`;
-    galleryContainerEl.innerHTML = '';
+    // Update session database with current frame's faces
+    facesData.forEach(face => {
+        if (!sessionFaceDatabase[face.id]) {
+            sessionFaceDatabase[face.id] = { ...face };
+        } else {
+            const existing = sessionFaceDatabase[face.id];
+            sessionFaceDatabase[face.id] = {
+                ...existing,
+                ...face,
+                face_png_alpha: face.face_png_alpha || existing.face_png_alpha
+            };
+        }
+    });
 
-    if (facesData.length === 0) {
+    const activeIds = facesData.map(f => f.id);
+    const sessionIds = Object.keys(sessionFaceDatabase).map(Number).sort((a, b) => a - b);
+
+    // Render gallery thumbnails (Persistent session gallery with active/inactive statuses)
+    lblGalleryCount.textContent = `TỔNG SỐ: ${sessionIds.length} MỤC TIÊU`;
+
+    if (sessionIds.length === 0) {
         galleryContainerEl.innerHTML = `
             <div style="color: var(--text-muted); font-size: 0.75rem; width: 100%; text-align: center; font-style: italic;">Không có mục tiêu nào trong khung nhìn</div>
         `;
+        previousSessionIds = [];
     } else {
-        facesData.forEach(face => {
-            const qual = getFaceQuality(face);
-            const card = document.createElement('div');
-            card.className = 'face-gallery-card';
-            card.title = `Nhấn để đánh dấu Mục tiêu #${face.id}`;
-            card.addEventListener('click', () => {
-                highlightFace(face.id);
+        const currentSessionIdsStr = sessionIds.join(',');
+        const prevSessionIdsStr = previousSessionIds.join(',');
+
+        if (currentSessionIdsStr !== prevSessionIdsStr) {
+            // Rebuild gallery only if the set of detected targets in the session database has changed
+            galleryContainerEl.innerHTML = '';
+            sessionIds.forEach(faceId => {
+                const face = sessionFaceDatabase[faceId];
+                const isActive = activeIds.includes(faceId);
+                const qual = getFaceQuality(face);
+                
+                const card = document.createElement('div');
+                card.id = `gallery-card-${face.id}`;
+                card.className = `face-gallery-card ${isActive ? 'active' : 'inactive'}`;
+                card.title = `Nhấn để đánh dấu Mục tiêu #${face.id}${isActive ? '' : ' (Đã rời đi)'}`;
+                
+                if (!isActive) {
+                    card.style.opacity = '0.55';
+                    card.style.filter = 'grayscale(35%)';
+                } else {
+                    card.style.opacity = '1';
+                    card.style.filter = 'none';
+                }
+
+                card.addEventListener('click', () => {
+                    if (isActive) {
+                        highlightFace(face.id);
+                    } else {
+                        pushAlertLog(`Hành động: Không thể định vị Mục tiêu #${face.id.toString().padStart(2, '0')} (Đã rời đi).`, "normal");
+                    }
+                });
+
+                const badgeHtml = isActive 
+                    ? `<div class="face-gallery-status-badge ${qual.level}">${qual.label}</div>`
+                    : `<div class="face-gallery-status-badge" style="background-color: #4a5568; color: #cbd5e0;">OFFLINE</div>`;
+
+                card.innerHTML = `
+                    <div class="face-gallery-thumbnail-box">
+                        <img src="${face.face_png_alpha || ''}" alt="Face">
+                    </div>
+                    <span class="face-gallery-id">TARGET #${face.id.toString().padStart(2, '0')}</span>
+                    ${badgeHtml}
+                    <div class="face-gallery-metrics">
+                        <div class="metric-progress-row" title="Face Quality: ${face.quality_score}%">
+                            <span class="metric-label">QLY</span>
+                            <div class="metric-track">
+                                <div class="metric-bar qly-bar" style="width: ${face.quality_score}%; background-color: ${isActive ? `var(--${qual.level === 'danger' ? 'danger' : qual.level === 'warning' ? 'warning' : 'success'})` : '#718096'}"></div>
+                            </div>
+                        </div>
+                        <div class="metric-progress-row" title="Face Visibility: ${face.visibility}%">
+                            <span class="metric-label">VIS</span>
+                            <div class="metric-track">
+                                <div class="metric-bar vis-bar" style="width: ${face.visibility}%; background-color: ${isActive ? 'var(--primary)' : '#718096'}"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                galleryContainerEl.appendChild(card);
             });
-            card.innerHTML = `
-                <div class="face-gallery-thumbnail-box">
-                    <img src="${face.face_png_alpha || ''}" alt="Face">
-                </div>
-                <span class="face-gallery-id">TARGET #${face.id.toString().padStart(2, '0')}</span>
-                <div class="face-gallery-status-badge ${qual.level}">${qual.label}</div>
-                <div class="face-gallery-metrics">
-                    <div class="metric-progress-row" title="Face Quality: ${face.quality_score}%">
-                        <span class="metric-label">QLY</span>
-                        <div class="metric-track">
-                            <div class="metric-bar qly-bar" style="width: ${face.quality_score}%; background-color: var(--${qual.level === 'danger' ? 'danger' : qual.level === 'warning' ? 'warning' : 'success'})"></div>
-                        </div>
-                    </div>
-                    <div class="metric-progress-row" title="Face Visibility: ${face.visibility}%">
-                        <span class="metric-label">VIS</span>
-                        <div class="metric-track">
-                            <div class="metric-bar vis-bar" style="width: ${face.visibility}%; background-color: var(--primary)"></div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            galleryContainerEl.appendChild(card);
-        });
+            previousSessionIds = [...sessionIds];
+        } else {
+            // Update active/inactive states and metrics in-place
+            sessionIds.forEach(faceId => {
+                const face = sessionFaceDatabase[faceId];
+                const isActive = activeIds.includes(faceId);
+                const qual = getFaceQuality(face);
+                const card = document.getElementById(`gallery-card-${faceId}`);
+                
+                if (card) {
+                    card.className = `face-gallery-card ${isActive ? 'active' : 'inactive'}`;
+                    card.title = `Nhấn để đánh dấu Mục tiêu #${face.id}${isActive ? '' : ' (Đã rời đi)'}`;
+                    
+                    if (!isActive) {
+                        card.style.opacity = '0.55';
+                        card.style.filter = 'grayscale(35%)';
+                    } else {
+                        card.style.opacity = '1';
+                        card.style.filter = 'none';
+                    }
+
+                    // Update status badge
+                    const badge = card.querySelector('.face-gallery-status-badge');
+                    if (badge) {
+                        if (isActive) {
+                            badge.className = `face-gallery-status-badge ${qual.level}`;
+                            badge.textContent = qual.label;
+                            badge.style.backgroundColor = '';
+                            badge.style.color = '';
+                        } else {
+                            badge.className = 'face-gallery-status-badge';
+                            badge.textContent = 'OFFLINE';
+                            badge.style.backgroundColor = '#4a5568';
+                            badge.style.color = '#cbd5e0';
+                        }
+                    }
+                    
+                    // Update thumbnail image source if changed
+                    const img = card.querySelector('img');
+                    if (img && face.face_png_alpha && img.getAttribute('src') !== face.face_png_alpha) {
+                        img.src = face.face_png_alpha;
+                    }
+                    
+                    // Update QLY progress bar
+                    const qlyBar = card.querySelector('.qly-bar');
+                    if (qlyBar) {
+                        qlyBar.style.width = `${face.quality_score}%`;
+                        qlyBar.style.backgroundColor = isActive ? `var(--${qual.level === 'danger' ? 'danger' : qual.level === 'warning' ? 'warning' : 'success'})` : '#718096';
+                        const row = qlyBar.closest('.metric-progress-row');
+                        if (row) row.setAttribute('title', `Face Quality: ${face.quality_score}%`);
+                    }
+                    
+                    // Update VIS progress bar
+                    const visBar = card.querySelector('.vis-bar');
+                    if (visBar) {
+                        visBar.style.width = `${face.visibility}%`;
+                        visBar.style.backgroundColor = isActive ? 'var(--primary)' : '#718096';
+                        const row = visBar.closest('.metric-progress-row');
+                        if (row) row.setAttribute('title', `Face Visibility: ${face.visibility}%`);
+                    }
+                }
+            });
+        }
     }
 
     // Canvas annotations redraw
@@ -759,6 +950,12 @@ fileUploaderInput.addEventListener('change', async (e) => {
     if (e.target.files.length === 0) return;
     const file = e.target.files[0];
 
+    // Clear session database for the new image session
+    Object.keys(sessionFaceDatabase).forEach(key => delete sessionFaceDatabase[key]);
+    previousSessionIds = [];
+    Object.keys(faceAlertStates).forEach(key => delete faceAlertStates[key]);
+    lastDensityLevel = 'LOW';
+
     pushAlertLog(`Hệ thống: Bắt đầu tải ảnh phân tích: ${file.name}.`, "normal");
 
     viewportLoader.style.display = 'flex';
@@ -770,6 +967,7 @@ fileUploaderInput.addEventListener('change', async (e) => {
     formData.append('threshold', sliderConfThresh.value);
     formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
     formData.append('upscale', 'true');
+    formData.append('min_face_px', sliderMinFacePx ? parseInt(sliderMinFacePx.value) : 36);
 
     const tStart = performance.now();
 
@@ -907,6 +1105,7 @@ async function processWebcamSurveillanceLoop() {
         formData.append('threshold', sliderConfThresh.value);
         formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
         formData.append('upscale', 'false');
+        formData.append('min_face_px', sliderMinFacePx ? parseInt(sliderMinFacePx.value) : 36);
 
         const tStart = performance.now();
 
@@ -951,9 +1150,7 @@ async function processWebcamSurveillanceLoop() {
         } finally {
             isLoopProcessing = false;
             if (isWebcamStreaming) {
-                setTimeout(() => {
-                    requestAnimationFrame(processWebcamSurveillanceLoop);
-                }, 0);
+                requestAnimationFrame(processWebcamSurveillanceLoop);
             }
         }
     }, 'image/jpeg', 0.70);
@@ -963,6 +1160,12 @@ async function processWebcamSurveillanceLoop() {
 videoUploaderInput.addEventListener('change', (e) => {
     if (e.target.files.length === 0) return;
     const file = e.target.files[0];
+
+    // Clear session database for the new video session
+    Object.keys(sessionFaceDatabase).forEach(key => delete sessionFaceDatabase[key]);
+    previousSessionIds = [];
+    Object.keys(faceAlertStates).forEach(key => delete faceAlertStates[key]);
+    lastDensityLevel = 'LOW';
 
     pushAlertLog(`Hệ thống: Nạp tệp video nội bộ: ${file.name}.`, "normal");
     videoFileFeed.src = URL.createObjectURL(file);
@@ -1038,6 +1241,7 @@ async function processVideoFileSurveillanceLoop() {
         formData.append('threshold', sliderConfThresh.value);
         formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
         formData.append('upscale', 'false');
+        formData.append('min_face_px', sliderMinFacePx ? parseInt(sliderMinFacePx.value) : 36);
 
         const tStart = performance.now();
 
@@ -1082,9 +1286,7 @@ async function processVideoFileSurveillanceLoop() {
         } finally {
             isLoopProcessing = false;
             if (isVideoStreaming) {
-                setTimeout(() => {
-                    requestAnimationFrame(processVideoFileSurveillanceLoop);
-                }, 0);
+                requestAnimationFrame(processVideoFileSurveillanceLoop);
             }
         }
     }, 'image/jpeg', 0.70);
@@ -1122,6 +1324,7 @@ videoFileFeed.addEventListener('seeked', async () => {
         formData.append('threshold', sliderConfThresh.value);
         formData.append('draw_mask', chkMask.checked ? 'true' : 'false');
         formData.append('upscale', 'false');
+        formData.append('min_face_px', sliderMinFacePx ? parseInt(sliderMinFacePx.value) : 36);
 
         try {
             const response = await fetch('/detect', {

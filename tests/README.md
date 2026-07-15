@@ -1,124 +1,98 @@
 # Test Suite
 
-## Purpose
+## Mục Đích
 
-Thư mục này chứa toàn bộ mã nguồn kiểm thử cho hệ thống phát hiện và phân đoạn khuôn mặt.
+Thư mục này chứa toàn bộ mã nguồn kiểm thử cho hệ thống phát hiện, theo dõi và phân đoạn khuôn mặt AI.
 
-Chiến lược kiểm thử được mô tả rõ hơn tại [docs/testing](../docs/testing/README.md).
-
----
-
-## Nguyên tắc triển khai
-
-Các test nên được tổ chức theo từng lớp và mỗi lớp có mục tiêu rõ ràng:
-
-- Unit test: kiểm tra logic thuần túy, không phụ thuộc mô hình đầy đủ.
-- Model test: kiểm tra wrapper mô hình và giao diện đầu vào/đầu ra.
-- Integration test: kiểm tra API và luồng giữa các module.
-- Pipeline test: kiểm tra luồng end-to-end từ ảnh đầu vào đến response cuối cùng.
-- Regression test: bảo vệ các tình huống lỗi đã từng gặp hoặc dễ tái diễn.
-- Benchmark test: đo hiệu năng khi cần, không phải là bước đầu tiên.
-
-Không nên dùng mock cho toàn bộ hệ thống. Mock chỉ nên dùng ở rìa, ví dụ khi cần thay thế model session hoặc IO boundary.
+Bộ test hiện tại: **21 test cases**, chạy bằng `pytest`.
 
 ---
 
-## Cấu trúc đề xuất
+## Cấu Trúc Hiện Tại
 
 ```text
 tests/
-├── unit/              # Logic độc lập: quality scoring, mask logic, box utils
-├── model/             # Wrapper detector/segmenter, model load, inference contract
-├── integration/       # API /detect, request/response, FastAPI interaction
-├── pipeline/          # Luồng đầy đủ từ ảnh -> detector -> segmenter -> quality -> response
-├── regression/        # Các trường hợp lỗi trước đây, fallback, empty input, tiny box
-├── benchmark/         # Optional performance / latency checks
-├── fixtures/          # Ảnh mẫu, dữ liệu giả lập, file nhỏ dùng chung
-└── conftest.py        # Fixtures và setup chung (nếu có)
+├── benchmark/
+│   └── test_performance_benchmark.py  # Đo latency và FPS (3 tests)
+├── integration/
+│   └── test_api_detect.py             # API /detect integration tests (5 tests)
+├── model/
+│   ├── test_face_detector.py          # RetinaFace wrapper tests (2 tests)
+│   └── test_segmentation.py           # U-Net segmenter wrapper tests (5 tests)
+└── unit/
+    └── test_face_quality.py           # Face quality logic unit tests (6 tests)
 ```
 
 ---
 
-## Mức ưu tiên triển khai
+## Chi Tiết Từng Nhóm Test
 
-### Giai đoạn 1: nền tảng
-- Thiết lập pytest, pytest-cov, pytest-html.
-- Tạo cấu trúc thư mục và fixture chung.
-- Bắt đầu với unit test cho các hàm logic cốt lõi.
+### `tests/unit/` — Unit Tests (6 tests)
 
-### Giai đoạn 2: bảo vệ luồng chính
-- Viết model test cho detector và segmenter.
-- Viết integration test cho endpoint /detect.
+Kiểm tra logic thuần túy của `backend/quality/face_quality.py`:
+- `check_face_size()`: Kích thước "Too Small" / "Normal" / "Large"
+- `check_visibility()`: Tính % visibility từ binary mask
+- `check_occlusion()`: Occlusion dựa trên visibility threshold
+- `check_head_pose()`: Ước lượng Head Pose từ landmarks hình học
+- `analyze_face_quality()`: Composite quality score và rating
 
-### Giai đoạn 3: bảo vệ rủi ro
-- Thêm regression test cho các trường hợp không có face, box quá nhỏ, segmentation lỗi, input không hợp lệ.
+### `tests/model/` — Model Tests (7 tests)
 
-### Giai đoạn 4: hiệu năng
-- Thêm benchmark test khi hệ thống đã ổn định.
+- **`test_face_detector.py`** (2 tests): Kiểm tra RetinaFace wrapper ONNX
+  - Load model không throw exception
+  - `detect()` trả về đúng cấu trúc `{box, confidence, landmarks}`
+- **`test_segmentation.py`** (5 tests): Kiểm tra U-Net segmenter
+  - `predict_batch()` với batch đơn/nhiều crops
+  - Output mask shape và dtype
+
+### `tests/integration/` — Integration Tests (5 tests)
+
+Dùng `FastAPI TestClient` với `DummyDetector` (box 80×80px) và `DummySegmenter`:
+- `test_root_endpoint_returns_html`: GET `/` trả về HTML
+- `test_detect_with_invalid_image_returns_400`: Ảnh binary không hợp lệ → 400
+- `test_detect_response_has_required_fields`: Kiểm tra JSON schema của response
+- `test_detect_with_valid_image_returns_expected_structure`: 320×320px image → face_count ≥ 0
+- `test_health_check`: GET `/health` → `{"status": "healthy"}`
+
+> [!IMPORTANT]
+> **Ghi chú SORT Tracker**: Với hit-streak gate (N≥2 confirmations), track mới chỉ hiện ra từ lần thứ 2 được detect. Do đó integration test chỉ assert `face_count >= 0`, không assert `>= 1` cho request đơn lẻ.
+
+> [!NOTE]
+> `DummyDetector` trả về box `[0, 0, 80, 80]` (80×80px) để đảm bảo vượt qua Geometric Filter (`MIN_FACE_PX = 36px`). Box cũ `[0, 0, 20, 20]` sẽ bị lọc bỏ bởi `is_valid_face_box()`.
+
+### `tests/benchmark/` — Benchmark Tests (3 tests)
+
+Đo hiệu năng end-to-end với ảnh thật hoặc ảnh synthetic:
+- Latency < 500ms/frame với MobileNet
+- FPS đạt ≥ 5 trong điều kiện CPU-only
 
 ---
 
-## Các file test nên có tên như thế nào
-
-- Tên file nên phản ánh module hoặc luồng đang test.
-- Ví dụ:
-  - test_face_quality.py
-  - test_postprocess.py
-  - test_face_detector.py
-  - test_api_detect.py
-  - test_pipeline_detect.py
-
----
-
-## Dữ liệu test
-
-- Nên dùng ảnh mẫu nhỏ và ổn định trong [tests/fixtures](fixtures/).
-- Có thể dùng ảnh thật và ảnh synthetic.
-- Nên phân biệt giữa dữ liệu dùng cho unit test và dữ liệu dùng cho integration/pipeline test.
-
----
-
-## Chạy test
+## Chạy Test
 
 ```bash
+# Chạy toàn bộ 21 tests
 pytest
-```
 
-Chạy từng nhóm:
-
-```bash
+# Chạy từng nhóm riêng
 pytest tests/unit
-```
-
-```bash
 pytest tests/model
-```
-
-```bash
 pytest tests/integration
-```
-
-```bash
-pytest tests/pipeline
-```
-
-```bash
-pytest tests/regression
-```
-
-```bash
 pytest tests/benchmark
+
+# Với verbose output
+pytest -v
+
+# Với coverage report
+pytest --cov=backend --cov-report=term-missing
 ```
 
 ---
 
-## Khuyến nghị thực tế cho dự án này
+## Nguyên Tắc Test
 
-Vì hệ thống có cả AI inference và API, cách test hợp lý nhất là:
-
-1. Đầu tiên test các logic thuần túy.
-2. Sau đó test các wrapper mô hình.
-3. Tiếp đến test endpoint /detect.
-4. Cuối cùng mới mở rộng sang regression và benchmark.
-
-Điều này giúp giảm rủi ro sớm, giữ test chạy nhanh và dễ debug hơn.
+- **Unit tests**: Không phụ thuộc model ONNX, chỉ test logic thuần Python.
+- **Model tests**: Sử dụng model ONNX thật từ `backend/weights/`.
+- **Integration tests**: Dùng `monkeypatch` để mock detector và segmenter, chỉ test API schema và routing.
+- **DummyDetector box size**: Phải `>= MIN_FACE_PX (36px)` để vượt qua Geometric Filter của FaceTracker.
+- **False positive behavior**: Bộ lọc hình học đang hoạt động đúng — không bao giờ assert `face_count >= 1` với ảnh đen trống.

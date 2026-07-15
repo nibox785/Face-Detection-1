@@ -28,8 +28,8 @@ def test_check_visibility_returns_zero_for_empty_mask():
 
 
 def test_check_occlusion_flags_low_visibility():
-    assert check_occlusion(60) is True
-    assert check_occlusion(70) is False
+    assert check_occlusion(35) is True
+    assert check_occlusion(45) is False
 
 
 def test_check_head_pose_returns_normal_for_valid_landmarks():

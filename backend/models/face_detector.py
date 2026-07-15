@@ -24,12 +24,17 @@ class RetinaFaceDetector:
             
         print(f"Loading RetinaFace ONNX model from {self.weights_path}...")
         opts = ort.SessionOptions()
-        intra_threads = int(os.environ.get("ONNX_INTRA_OP_THREADS", "4"))
+        intra_threads = int(os.environ.get("ONNX_INTRA_OP_THREADS", "0"))
         opts.intra_op_num_threads = intra_threads
         opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self.session = ort.InferenceSession(self.weights_path, sess_options=opts, providers=ort.get_available_providers())
         print("RetinaFace ONNX model loaded successfully.")
+        # PriorBox and scale cache for speed optimization
+        self.cached_size = None
+        self.cached_priors_np = None
+        self.cached_scale_np = None
+        self.cached_scale1_np = None
 
     def detect(self, img_raw, confidence_threshold=0.5, nms_threshold=0.4, upscale=False):
         im_height, im_width, _ = img_raw.shape
@@ -56,39 +61,57 @@ class RetinaFaceDetector:
         input_name = self.session.get_inputs()[0].name
         loc, conf, landms = self.session.run(None, {input_name: img})
         
-        # Convert outputs to torch tensors for decoding
-        loc_t = torch.from_numpy(loc).squeeze(0)
-        conf_t = torch.from_numpy(conf).squeeze(0)
-        landms_t = torch.from_numpy(landms).squeeze(0)
+        # Check cached priors and scale factors
+        if self.cached_size == (proc_height, proc_width):
+            priors_np = self.cached_priors_np
+            scale_np = self.cached_scale_np
+            scale1_np = self.cached_scale1_np
+        else:
+            priorbox = PriorBox(self.cfg, image_size=(proc_height, proc_width))
+            priors = priorbox.forward()
+            priors_np = priors.data.cpu().numpy()
+            scale_np = np.array([proc_width, proc_height, proc_width, proc_height], dtype=np.float32)
+            scale1_np = np.array([proc_width, proc_height, proc_width, proc_height,
+                                  proc_width, proc_height, proc_width, proc_height,
+                                  proc_width, proc_height], dtype=np.float32)
+            self.cached_size = (proc_height, proc_width)
+            self.cached_priors_np = priors_np
+            self.cached_scale_np = scale_np
+            self.cached_scale1_np = scale1_np
+            
+        loc_np = loc.squeeze(0)
+        conf_np = conf.squeeze(0)
+        landms_np = landms.squeeze(0)
         
-        # Decoders (reusing existing pytorch functions)
-        priorbox = PriorBox(self.cfg, image_size=(proc_height, proc_width))
-        priors = priorbox.forward()
-        prior_data = priors.data
+        # Decode boxes in NumPy
+        variance = self.cfg['variance']
+        boxes = np.concatenate((
+            priors_np[:, :2] + loc_np[:, :2] * variance[0] * priors_np[:, 2:],
+            priors_np[:, 2:] * np.exp(loc_np[:, 2:] * variance[1])
+        ), axis=1)
+        boxes[:, :2] -= boxes[:, 2:] / 2
+        boxes[:, 2:] += boxes[:, :2]
         
-        # Decode boxes
-        boxes = decode(loc_t, prior_data, self.cfg['variance'])
-        scale = torch.Tensor([proc_width, proc_height, proc_width, proc_height])
-        boxes = boxes * scale
-        boxes = boxes / scale_factor  # Scale back to original resolution
-        boxes = boxes.cpu().numpy()
+        # Scale back to original resolution
+        boxes = (boxes * scale_np) / scale_factor
         
         # Decode scores
-        scores = conf_t.cpu().numpy()[:, 1]
+        scores = conf_np[:, 1]
         
-        # Decode landmarks
-        landms = decode_landm(landms_t, prior_data, self.cfg['variance'])
-        scale1 = torch.Tensor([proc_width, proc_height, proc_width, proc_height,
-                               proc_width, proc_height, proc_width, proc_height,
-                               proc_width, proc_height])
-        landms = landms * scale1
-        landms = landms / scale_factor  # Scale back to original resolution
-        landms = landms.cpu().numpy()
+        # Decode landmarks in NumPy
+        landms_decoded = np.concatenate((
+            priors_np[:, :2] + landms_np[:, :2] * variance[0] * priors_np[:, 2:],
+            priors_np[:, :2] + landms_np[:, 2:4] * variance[0] * priors_np[:, 2:],
+            priors_np[:, :2] + landms_np[:, 4:6] * variance[0] * priors_np[:, 2:],
+            priors_np[:, :2] + landms_np[:, 6:8] * variance[0] * priors_np[:, 2:],
+            priors_np[:, :2] + landms_np[:, 8:10] * variance[0] * priors_np[:, 2:]
+        ), axis=1)
+        landms_decoded = (landms_decoded * scale1_np) / scale_factor
         
         # Filter low scores
         inds = np.where(scores > confidence_threshold)[0]
         boxes = boxes[inds]
-        landms = landms[inds]
+        landms = landms_decoded[inds]
         scores = scores[inds]
         
         # Keep top-K before NMS

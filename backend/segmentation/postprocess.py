@@ -2,6 +2,10 @@ import numpy as np
 import torch
 from .config import FACE_CLASSES
 
+# Precompute 1D lookup table for fast mapping
+FACE_LUT = np.zeros(256, dtype=np.uint8)
+FACE_LUT[FACE_CLASSES] = 255
+
 def logits_to_binary_mask(logits):
     """
     Convert model output logits to a binary mask where face components are 255 and background/others are 0.
@@ -16,9 +20,7 @@ def logits_to_binary_mask(logits):
         if len(logits.shape) == 4:  # (1, 19, H, W)
             logits = logits[0]
         preds = np.argmax(logits, axis=0)  # (H, W)
-        binary_mask = np.zeros_like(preds, dtype=np.uint8)
-        for class_idx in FACE_CLASSES:
-            binary_mask[preds == class_idx] = 255
+        binary_mask = FACE_LUT[preds]
     else:
         # Assuming PyTorch Tensor
         if len(logits.shape) == 4:  # (1, 19, H, W)
@@ -27,8 +29,6 @@ def logits_to_binary_mask(logits):
         with torch.no_grad():
             preds = torch.argmax(logits, dim=0).cpu().numpy()  # (H, W)
             
-        binary_mask = np.zeros_like(preds, dtype=np.uint8)
-        for class_idx in FACE_CLASSES:
-            binary_mask[preds == class_idx] = 255
+        binary_mask = FACE_LUT[preds]
             
     return binary_mask

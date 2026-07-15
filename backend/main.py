@@ -31,9 +31,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cache detectors and segmenter
+from .utils.tracker import FaceTracker
+
+# Cache detectors, segmenter and tracker
 detectors = {}
 segmenter = None
+tracker = FaceTracker(unet_interval=6)
 
 def get_detector(network_name: str):
     if network_name not in detectors:
@@ -128,11 +131,12 @@ def health_check():
 async def detect(
     image: UploadFile = File(...),
     network: str = Form("mobile0.25"),
-    threshold: float = Form(0.5),
+    threshold: float = Form(0.6),
     draw_mask: bool = Form(False),
     upscale: bool = Form(False),
     save_report: bool = Form(False),
     report_name: str = Form(None),
+    min_face_px: int = Form(36),
     background_tasks: BackgroundTasks = None,
 ):
     try:
@@ -145,100 +149,41 @@ async def detect(
             
         t_start = time.time()
         
-        detector = get_detector(network)
-        faces_list = detector.detect(img_raw, confidence_threshold=threshold, upscale=upscale)
+        # Determine if we need to run the heavy face detector on this frame
+        if tracker.needs_detector_run():
+            detector = get_detector(network)
+            faces_list = detector.detect(img_raw, confidence_threshold=threshold, upscale=upscale)
+        else:
+            faces_list = None
         
         h, w = img_raw.shape[:2]
         
-        # 1. Collect crops for batched U-Net segmentation
-        unet_crops = []
-        unet_indices = []
+        # 1. Update the tracker with detections
+        segmenter = get_segmenter()
+        tracked_faces = tracker.update(
+            detected_faces=faces_list,
+            img_raw=img_raw,
+            draw_mask=draw_mask,
+            segmenter=segmenter,
+            threshold=threshold,
+            min_face_px=min_face_px
+        )
         
-        if draw_mask:
-            for idx, face in enumerate(faces_list):
-                box_coords = face['box']
-                x1, y1, x2, y2 = map(int, box_coords[:4])
-                x1 = max(0, x1)
-                y1 = max(0, y1)
-                x2 = min(w, x2)
-                y2 = min(h, y2)
-                
-                rect_w = x2 - x1
-                rect_h = y2 - y1
-                
-                if rect_w * rect_h < 4096 or rect_w <= 10 or rect_h <= 10:
-                    continue
-                
-                face_crop = img_raw[y1:y2, x1:x2]
-                unet_crops.append(face_crop)
-                unet_indices.append(idx)
-            
-        # 2. Run batched U-Net segmentation
-        unet_masks = []
-        if unet_crops:
-            try:
-                unet_masks = get_segmenter().predict_batch(unet_crops)
-            except Exception as e:
-                print("U-Net batch segmentation failed, fallback to ellipses:", e)
-                unet_masks = []
-                
-        # 3. Assemble results and calculate face metrics
+        # 2. Draw annotations and assemble payload
         annotated_img = img_raw.copy()
         overlay_color = [246, 92, 139] # BGR purple (139, 92, 246)
         
         faces_data = []
-        face_count = 0
-        unet_map = {face_idx: mask_idx for mask_idx, face_idx in enumerate(unet_indices)}
+        face_count = len(tracked_faces)
         
-        for idx, face in enumerate(faces_list):
-            face_count += 1
+        for face in tracked_faces:
             box_coords = face['box']
             confidence = face['confidence']
             landmarks_coords = face['landmarks']
+            binary_mask = face['binary_mask']
+            face_png_alpha = face['face_png_alpha']
+            track_id = face['id']
             
-            x1, y1, x2, y2 = map(int, box_coords[:4])
-            x1 = max(0, x1)
-            y1 = max(0, y1)
-            x2 = min(w, x2)
-            y2 = min(h, y2)
-            
-            rect_w = x2 - x1
-            rect_h = y2 - y1
-            
-            binary_mask = np.zeros((h, w), dtype=np.uint8)
-            
-            # Map U-Net mask output or fallback to ellipse
-            if idx in unet_map and unet_map[idx] < len(unet_masks):
-                crop_mask = unet_masks[unet_map[idx]]
-                binary_mask[y1:y2, x1:x2] = crop_mask
-            else:
-                center = (int((x1 + x2) / 2), int((y1 + y2) / 2))
-                axes = (int(rect_w / 2), int(rect_h / 2))
-                cv2.ellipse(binary_mask, center, axes, 0, 0, 360, 255, -1)
-                
-            # Generate alpha-blended transparent face crop
-            pad = min(15, int(max(rect_w, rect_h) * 0.1))
-            px1 = max(0, x1 - pad)
-            py1 = max(0, y1 - pad)
-            px2 = min(w, x2 + pad)
-            py2 = min(h, y2 + pad)
-            
-            crop_w = px2 - px1
-            crop_h = py2 - py1
-            
-            face_png_alpha = ""
-            if crop_w > 0 and crop_h > 0:
-                face_crop_region = img_raw[py1:py2, px1:px2]
-                mask_crop = binary_mask[py1:py2, px1:px2]
-                mask_crop_soft = cv2.GaussianBlur(mask_crop, (5, 5), 0)
-                
-                b_ch, g_ch, r_ch = cv2.split(face_crop_region)
-                rgba_crop = cv2.merge([b_ch, g_ch, r_ch, mask_crop_soft])
-                
-                _, png_buffer = cv2.imencode('.png', rgba_crop)
-                png_base64 = base64.b64encode(png_buffer).decode('utf-8')
-                face_png_alpha = f"data:image/png;base64,{png_base64}"
-                
             # Quality assessment
             q_results = analyze_face_quality(box_coords, confidence, landmarks_coords, binary_mask)
             mask_rle = rle_encode(binary_mask)
@@ -256,7 +201,7 @@ async def detect(
             cv2.rectangle(annotated_img, (box_ints[0], box_ints[1]), (box_ints[2], box_ints[3]), (0, 255, 0), 2)
             
             # Label box
-            text = f"ID:{face_count} {confidence:.2f}"
+            text = f"ID:{track_id} {confidence:.2f}"
             cx = box_ints[0]
             cy = box_ints[1] - 5 if box_ints[1] - 5 > 15 else box_ints[1] + 15
             label_size, base_line = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 0.4, 1)
@@ -269,7 +214,7 @@ async def detect(
                 cv2.circle(annotated_img, (int(landmarks_coords[2*j]), int(landmarks_coords[2*j+1])), 3, (0, 0, 255), -1)
                 
             faces_data.append({
-                'id': face_count,
+                'id': track_id,
                 'box': box_coords,
                 'confidence': confidence,
                 'landmarks': landmarks_coords,
@@ -350,4 +295,9 @@ frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../front
 app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=5000)
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "5000"))
+    # Disable Uvicorn's HTTP access logs by default to prevent flooding the terminal
+    access_log = os.getenv("ACCESS_LOG", "False").lower() == "true"
+    
+    uvicorn.run(app, host=host, port=port, access_log=access_log)

@@ -31,10 +31,18 @@ def _create_logger(name: str, log_path: Path) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
     if not logger.handlers:
+        # File handler: logs everything at INFO and above
         handler = logging.FileHandler(log_path, encoding="utf-8")
+        handler.setLevel(logging.INFO)
         handler.setFormatter(JsonFormatter())
         logger.addHandler(handler)
+        
+        # Stream handler for console: defaults to WARNING to prevent flooding the terminal
+        console_log_level_str = os.getenv("CONSOLE_LOG_LEVEL", "WARNING").upper()
+        console_log_level = getattr(logging, console_log_level_str, logging.WARNING)
+        
         stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setLevel(console_log_level)
         stream_handler.setFormatter(JsonFormatter())
         logger.addHandler(stream_handler)
     return logger

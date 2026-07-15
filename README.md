@@ -1,21 +1,34 @@
 # AI Crowd Face Surveillance Console (Hệ Thống Giám Sát Khuôn Mặt AI)
 
-Dự án này là một hệ thống Giám sát Khuôn mặt Đám đông thông minh (AI CCTV Console) được phát triển phục vụ cho các kịch bản an ninh công cộng. Ứng dụng thực hiện đồng thời hai bài toán thị giác máy tính cốt lõi: **Phát hiện khuôn mặt đám đông (Face Detection)** và **Phân vùng khuôn mặt (Face Segmentation)** sử dụng các công nghệ trí tuệ nhân tạo tiên tiến.
+Dự án này là một hệ thống Giám sát Khuôn mặt Đám đông thông minh (AI CCTV Console) được phát triển phục vụ cho các kịch bản an ninh công cộng. Ứng dụng thực hiện đồng thời hai bài toán thị giác máy tính cốt lõi: **Phát hiện và Theo dõi khuôn mặt đám đông (Face Detection + Tracking)** và **Phân vùng khuôn mặt (Face Segmentation)** sử dụng các công nghệ trí tuệ nhân tạo tiên tiến.
 
 ---
 
 ## Các Tính Năng Nổi Bật
 
-1. **Nhận diện khuôn mặt đám đông (RetinaFace ONNX):** Định vị chính xác tọa độ bounding box và 5 điểm landmarks (mắt, mũi, miệng) của nhiều đối tượng trong cảnh đông người.
-2. **Phân vùng chi tiết vùng mặt (U-Net ONNX):** Cắt và tạo lớp phủ mặt nạ phân vùng (Face Mask) sắc nét bao quanh khuôn mặt dựa trên mô hình U-Net huấn luyện với bộ dữ liệu CelebAMask-HQ.
-3. **Đánh giá chất lượng khuôn mặt (Face Quality Analytics):** Tự động tính toán độ che khuất (Occlusion) và ước lượng hướng quay đầu (Head Pose: Trái, Phải, Ngửa, Cúi, Thẳng) dựa trên hình học landmarks và tỉ lệ mặt nạ.
-4. **Giao diện Modern Glassmorphism Dashboard:** Thiết kế giao diện mô phỏng phòng điều khiển an ninh cao cấp với hiệu ứng mờ kính cường lực, viền neon phát sáng và hiệu ứng quét camera.
-5. **Biểu đồ thống kê thời gian thực (ApexCharts.js):**
-   * Biểu đồ tròn hiển thị tỉ lệ phân bổ chất lượng (Excellent, Good, Acceptable, Poor, Unusable).
-   * Biểu đồ cột ngang hiển thị phân tích góc quay đầu (Head Pose).
-   * Biểu đồ đường vẽ lịch sử biến động số lượng mục tiêu trong khung nhìn.
-6. **Nhật ký & Âm thanh cảnh báo (Audio Alerts):** Phát âm thanh cảnh báo tần số cao (tiếng bíp) khi phát hiện mật độ đám đông vượt ngưỡng hoặc phát hiện đối tượng che mặt/nghi vấn.
-7. **Lưu trữ bằng chứng (Evidence Snapshot):** Hỗ trợ chụp và tải xuống hồ sơ bằng chứng đầy đủ cho từng đối tượng (gồm ảnh toàn cảnh, ảnh chân dung cắt nền trong suốt chứa kênh alpha mặt nạ, mặt nạ nhị phân và file thông số JSON).
+1. **Nhận diện khuôn mặt đám đông (RetinaFace ONNX):** Định vị chính xác tọa độ bounding box và 5 điểm landmarks (mắt, mũi, miệng) của nhiều đối tượng trong cảnh đông người. Hỗ trợ hai backbone: **MobileNet0.25** (ưu tiên tốc độ, ~24ms) và **ResNet50** (ưu tiên độ chính xác).
+
+2. **Theo dõi mục tiêu đa đối tượng (SORT-like Tracker):** Duy trì ID ổn định cho từng khuôn mặt qua nhiều khung hình liên tiếp sử dụng thuật toán Hungarian Algorithm + IoU Cost Matrix và Constant Velocity Predictor. Bao gồm:
+   - **Bộ lọc hình học (Geometric Filter):** Tự động loại bỏ false positive (lỗ thông gió, bảng hiệu, hoa văn) có kích thước < 36px hoặc tỉ lệ w/h bất thường.
+   - **Hit-streak gate:** Track chỉ được xác nhận sau N ≥ 2 lần phát hiện liên tiếp, ngăn chặn box flash từ background.
+   - **Velocity-predicted IoU:** Dự báo vị trí mục tiêu dựa trên vận tốc dịch chuyển trước khi so khớp, đảm bảo ID không bị swap khi người di chuyển nhanh hoặc đi qua nhau.
+
+3. **Phân vùng chi tiết vùng mặt (U-Net ONNX):** Tạo lớp phủ mặt nạ phân vùng (Face Mask) sắc nét bao quanh khuôn mặt. U-Net chỉ chạy mỗi N frame (throttled) để tối ưu hiệu năng, các frame trung gian dùng cached mask.
+
+4. **Đánh giá chất lượng khuôn mặt (Face Quality Analytics):** Tự động tính toán độ che khuất (Occlusion) và ước lượng hướng quay đầu (Head Pose: Trái, Phải, Ngửa, Cúi, Thẳng) dựa trên hình học landmarks và tỉ lệ mặt nạ.
+
+5. **Giao diện Modern Glassmorphism Dashboard:** Thiết kế giao diện mô phỏng phòng điều khiển an ninh cao cấp với hiệu ứng mờ kính cường lực, viền neon phát sáng và hiệu ứng quét camera.
+
+6. **Biểu đồ thống kê thời gian thực (ApexCharts.js):**
+   - Biểu đồ tròn hiển thị tỉ lệ phân bổ chất lượng (Excellent, Good, Acceptable, Poor, Unusable).
+   - Biểu đồ cột ngang hiển thị phân tích góc quay đầu (Head Pose).
+   - Biểu đồ đường vẽ lịch sử biến động số lượng mục tiêu trong khung nhìn.
+
+7. **Nhật ký cảnh báo theo sự kiện (State-Transition Alerting):** Ghi log cảnh báo chỉ khi có **thay đổi trạng thái** mới (mục tiêu vào/ra, thay đổi chất lượng, thay đổi mật độ đám đông), không spam lặp lại theo từng giây.
+
+8. **Gallery mục tiêu lưu trữ phiên (Session Face Gallery):** Lưu trữ và hiển thị tất cả khuôn mặt đã từng xuất hiện trong phiên giám sát hiện tại. Khuôn mặt đã rời khỏi camera được đánh dấu **OFFLINE** (mờ xám) thay vì xóa đi.
+
+9. **Lưu trữ bằng chứng (Evidence Snapshot):** Hỗ trợ chụp và tải xuống hồ sơ bằng chứng đầy đủ cho từng đối tượng (gồm ảnh toàn cảnh, ảnh chân dung cắt nền trong suốt chứa kênh alpha mặt nạ, mặt nạ nhị phân và file thông số JSON).
 
 ---
 
@@ -27,6 +40,8 @@ Dự án được thiết kế theo cấu trúc Modular sạch sẽ, phân tách
 / (Thư mục gốc)
 ├── backend/
 │   ├── main.py               # Máy chủ FastAPI chính & các API Endpoints
+│   ├── app_logging/          # Hệ thống ghi log có cấu trúc
+│   │   └── structured_logger.py  # Logger ghi JSON có timestamp & event type
 │   ├── data/                 # Chứa cấu hình và nạp dữ liệu RetinaFace
 │   │   └── config.py         # Cấu hình kiến trúc mạng RetinaFace (MNet, ResNet)
 │   ├── models/               # Bộ điều khiển (Wrappers) suy luận mô hình
@@ -40,6 +55,9 @@ Dự án được thiết kế theo cấu trúc Modular sạch sẽ, phân tách
 │   │   ├── config.py         # Cấu hình các lớp phân vùng da mặt & ngũ quan
 │   │   ├── model.py          # Định nghĩa kiến trúc mạng PyTorch U-Net
 │   │   └── postprocess.py    # Chuyển đổi Logits sang nhãn mặt nạ nhị phân
+│   ├── utils/
+│   │   └── tracker.py        # **SORT-like Tracker** – Hungarian IoU matching,
+│   │                         #   geometric filter, velocity predictor, hit-streak gate
 │   └── weights/              # Nơi lưu trữ file trọng số (.pth và .onnx)
 │
 ├── frontend/                 # Giao diện an ninh tĩnh được serve bởi FastAPI
@@ -47,8 +65,16 @@ Dự án được thiết kế theo cấu trúc Modular sạch sẽ, phân tách
 │   ├── css/
 │   │   └── style.css         # CSS định kiểu giao diện hiện đại & Neon HUD
 │   └── js/
-│       └── app.js            # Logic webcam loop, biểu đồ động ApexCharts & âm thanh
+│       └── app.js            # Logic webcam loop, Session Gallery, State-Transition
+│                             #   Alert Logger, biểu đồ ApexCharts & âm thanh HUD
 │
+├── tests/
+│   ├── benchmark/            # Kiểm thử hiệu năng (Latency, FPS)
+│   ├── integration/          # Kiểm thử API endpoint /detect
+│   ├── model/                # Kiểm thử mô hình detector và segmenter
+│   └── unit/                 # Kiểm thử đơn vị face_quality
+│
+├── docs/                     # Tài liệu dự án đầy đủ
 ├── export_onnx.py            # Script xuất các mô hình .pth sang mô hình tăng tốc .onnx
 ├── requirements.txt          # Khai báo các thư viện Python phụ thuộc
 └── run.py                    # Script chạy nhanh hệ thống (kích hoạt backend/main.py)
@@ -56,96 +82,133 @@ Dự án được thiết kế theo cấu trúc Modular sạch sẽ, phân tách
 
 ---
 
-## Luồng Xử Lý Logic & Trí Tuệ Nhân Tạo (Logic + AI)
+## Luồng Xử Lý Logic & Trí Tuệ Nhân Tạo
 
-Dưới đây là sơ đồ luồng xử lý dữ liệu hình ảnh của hệ thống từ lúc nhận dữ liệu camera cho đến khi phân tích chất lượng khuôn mặt và hiển thị lên giao diện giám sát:
+Sơ đồ dưới đây mô tả toàn bộ pipeline AI từ khi nhận frame camera đến khi kết quả được hiển thị trên giao diện giám sát:
 
 ```mermaid
 graph TD
     A[Nguồn ảnh/video từ Client] -->|Gửi API request| B(FastAPI Backend)
-    B --> C{Mô hình RetinaFace ONNX}
-    C -->|Phát hiện| D[Tọa độ Bounding Box & 5 Landmarks]
-    D --> E{Lọc Ngưỡng Tin Cậy & NMS}
-    E -->|Khuôn mặt hợp lệ| F[Crop vùng khuôn mặt từ ảnh gốc]
-    F --> G{Chuẩn hoá & Resize 512x512}
-    G --> H{Mô hình U-Net ONNX}
-    H -->|Dự đoán mặt nạ| I[Binary Face Mask nhị phân]
-    I --> J{Đánh giá chất lượng Face Quality}
-    J -->|Tính Pose & Occlusion| K[Tạo ảnh crop PNG trong suốt]
-    K --> L[Đóng gói dữ liệu JSON & Base64]
-    L -->|Phản hồi API| M[Frontend Dashboard]
-    M -->|Cập nhật| N[Hiển thị Bbox/Mask + Vẽ biểu đồ thống kê]
+    B --> C{Frame thứ N?}
+    C -->|Frame Detector: N mod 4 == 0| D[RetinaFace ONNX Inference]
+    C -->|Frame Skip| E[Constant Velocity Predictor]
+    D --> F[Geometric Filter: w/h ratio & min_px]
+    F --> G[Hungarian Algorithm IoU Matching]
+    E --> G
+    G -->|Track đã xác nhận hit_streak ≥ 2| H[SORT-like FaceTracker State]
+    H --> I{U-Net Scheduled?}
+    I -->|Mỗi 6 frame / crop_mask == None| J[U-Net ONNX Segmentation]
+    I -->|Frame khác| K[Reuse Cached Mask]
+    J --> L[Binary Face Mask]
+    K --> L
+    L --> M[Face Quality Analysis]
+    M -->|Pose + Occlusion + Score| N[Đóng gói JSON + Base64 PNG]
+    N -->|API Response| O[Frontend Dashboard]
+    O --> P[Vẽ Canvas overlay + Gallery + ApexCharts]
+    O --> Q{State Transition?}
+    Q -->|Mục tiêu vào/ra/thay đổi| R[Alert Log Entry]
+    Q -->|Không thay đổi| S[Không ghi log]
 ```
 
 Các bước xử lý cụ thể bao gồm:
-1. **Phát hiện khuôn mặt (RetinaFace):** Mô hình RetinaFace ONNX nhận dạng các vùng mặt trong đám đông, trả về tọa độ và các điểm định vị. Thuật toán NMS (Non-Maximum Suppression) sẽ lọc bỏ các hộp bao trùng lặp bao quanh cùng một khuôn mặt.
-2. **Phân vùng khuôn mặt (U-Net):** Từng khuôn mặt phát hiện được crop ra, đưa qua mạng U-Net ONNX để dự đoán phân lớp 19 bộ phận khuôn mặt (da, tóc, ngũ quan...). Các bộ phận cấu thành mặt (13 lớp da mặt và ngũ quan từ lớp 1 đến lớp 13) được gộp lại thành mặt nạ nhị phân (Binary Face Mask).
-3. **Đánh giá chất lượng (Telemetry):** Tính toán độ che khuất (Occlusion) và góc xoay đầu (Head Pose) dựa trên hình học từ landmarks và mặt nạ phân vùng.
-4. **Hiển thị & Thống kê:** Backend trả dữ liệu JSON và ảnh cắt chân dung (dưới dạng Base64 chứa kênh Alpha) để Frontend render trực tiếp lên Canvas và cập nhật các biểu đồ thống kê thời gian thực.
+
+1. **Skip-frame Detection:** Detector nặng (RetinaFace) chỉ chạy mỗi 4 frame. 3 frame trung gian dùng Constant Velocity Predictor để cập nhật vị trí bbox theo hướng vận tốc đã tính.
+2. **Bộ lọc hình học (Geometric Filter):** Mỗi detection từ RetinaFace được kiểm tra tỉ lệ `w/h` (phải từ 0.4–2.5) và kích thước tối thiểu (mặc định 36px, người dùng có thể chỉnh). Detection không hợp lệ bị loại bỏ ngay lập tức để tránh false positive trên background.
+3. **Hungarian Algorithm Matching:** Ma trận IoU giữa detection hiện tại và vị trí dự báo của các track được tính toán. Thuật toán Hungarian (scipy.optimize.linear_sum_assignment) tìm phân công tối ưu toàn cục, đảm bảo không bị ID swap dù nhiều người đi gần nhau.
+4. **Hit-streak Gate:** Track mới (tentative) chỉ được chuyển sang confirmed sau khi được ghép thành công ≥ 2 lần liên tiếp. Điều này ngăn box flash từ false positive.
+5. **Phân vùng khuôn mặt (U-Net):** Từng khuôn mặt được crop và đưa qua U-Net ONNX mỗi 6 frame/track. Mask được cache và resize cho các frame trung gian.
+6. **Đánh giá chất lượng (Telemetry):** Tính toán Occlusion và Head Pose dựa trên mask và landmarks.
+7. **State-Transition Alert Logger:** Frontend chỉ ghi cảnh báo khi có thay đổi trạng thái thực sự (mục tiêu mới, mục tiêu rời đi, thay đổi mật độ đám đông, thay đổi chất lượng).
 
 ---
 
 ## 🛠️ Hướng Dẫn Cài Đặt & Chạy Dự Án (Local)
 
 ### 1. Yêu cầu hệ thống
-* Đã cài đặt Python từ phiên bản 3.8 đến 3.12.
-* Webcam kết nối với máy tính (nếu muốn sử dụng tính năng live stream trực tuyến).
+* Python 3.8 – 3.12 đã được cài đặt.
+* Webcam kết nối với máy tính (tùy chọn, cần cho tính năng live stream).
+* Thư viện `scipy` (được cài tự động qua `requirements.txt`).
 
 ### 2. Cài đặt các thư viện phụ thuộc
-Mở terminal tại thư mục gốc của dự án và chạy lệnh sau để cài đặt môi trường:
 ```bash
 pip install -r requirements.txt
 ```
-*(Ghi chú: Quá trình suy luận mô hình chính (Inference) đã được chuyển giao cho ONNX Runtime giúp tăng tốc độ xử lý trên CPU từ 2-3 lần. Tuy nhiên, hệ thống vẫn duy trì thư viện PyTorch trong `requirements.txt` để hỗ trợ giải mã hình học tọa độ khuôn mặt thừa kế và phục vụ các công cụ chuyển đổi).*
+
+> **Ghi chú**: Quá trình suy luận (Inference) đã được tăng tốc bằng ONNX Runtime (nhanh hơn 2–3× so với PyTorch thuần). PyTorch vẫn giữ trong requirements để phục vụ giải mã hình học legacy và các công cụ export mô hình.
 
 ### 3. Chuẩn bị Mô hình (Weights)
-Dự án sử dụng các mô hình học sâu RetinaFace (định dạng ONNX) để phát hiện khuôn mặt và U-Net để phân vùng. Vì kích thước các mô hình này rất lớn (trên 100MB) và được liệt kê trong `.gitignore`, bạn có thể chuẩn bị chúng bằng **một trong hai cách** sau:
 
-* **Cách 1: Tải tự động (Khuyên dùng)**
-  * Bạn không cần thực hiện thêm bước nào. Khi khởi chạy dự án bằng lệnh `python run.py`, hệ thống sẽ tự động kiểm tra thư mục `backend/weights/`.
-  * Nếu phát hiện thiếu mô hình, code khởi tạo sẽ **tự động tải** các tệp `.onnx` trực tiếp từ GitHub Releases của kho chứa về máy và hiển thị tiến trình tải trực quan.
+Dự án cần 3 file mô hình ONNX trong thư mục `backend/weights/`:
+- `mobilenet0.25_Final.onnx`
+- `Resnet50_Final.onnx`
+- `unet_face_celeb.onnx`
 
-* **Cách 2: Chuyển đổi thủ công (Nếu bạn đã có sẵn các tệp trọng số PyTorch `.pth` cục bộ)**
-  * Đặt các tệp trọng số PyTorch gốc (`Resnet50_Final.pth`, `mobilenet0.25_Final.pth`, `unet_face_celeb.pth`) vào thư mục `backend/weights/`.
-  * Chạy script chuyển đổi mô hình PyTorch gốc sang ONNX (`.onnx`):
-    ```bash
-    python export_onnx.py
-    ```
+**Cách 1: Tải tự động (Khuyên dùng)**
+Khi chạy `python run.py`, hệ thống tự động kiểm tra và tải về từ GitHub Releases nếu thiếu.
+
+**Cách 2: Chuyển đổi thủ công (nếu đã có `.pth`)**
+```bash
+python export_onnx.py
+```
 
 > [!IMPORTANT]
-> **Hướng dẫn dành cho Quản trị viên Repo:**
-> Để tính năng Tải tự động hoạt động, quản trị viên cần tạo một bản **Release** trên GitHub của dự án với tag phiên bản là `v1.0.0` và đính kèm (upload) 3 tệp mô hình ONNX sau vào mục Assets của bản Release đó:
-> 1. `unet_face_celeb.onnx`
-> 2. `mobilenet0.25_Final.onnx`
-> 3. `Resnet50_Final.onnx`
-
----
+> **Dành cho Quản trị viên Repo:** Để tính năng tải tự động hoạt động, cần tạo Release trên GitHub với tag `v1.0.0` và đính kèm 3 file ONNX vào phần Assets.
 
 ### 4. Khởi chạy Server
-Chạy lệnh sau tại thư mục gốc để khởi động máy chủ FastAPI:
 ```bash
 python run.py
 ```
-Màn hình console hiển thị log sau là server đã khởi động thành công:
-```text
-INFO:     Started server process [14504]
-INFO:     Uvicorn running on http://0.0.0.0:5000 (Press CTRL+C to quit)
-```
-*(Hệ thống sử dụng cổng **5000** mặc định phục vụ đồng thời cả API backend và serve tài nguyên tĩnh frontend).*
+Hệ thống sẽ khởi động tại `http://0.0.0.0:5000`. Truy cập giao diện tại:
 
-### 5. Truy cập giao diện
-Mở trình duyệt web của bạn và truy cập địa chỉ:
 👉 **`http://127.0.0.1:5000`**
 
 ---
 
 ## 📖 Hướng Dẫn Sử Dụng Giao Diện
 
-1. **Chọn nguồn dữ liệu:** Tại bảng điều khiển bên phải, chọn nguồn camera tương ứng:
-   * *Tải ảnh tĩnh:* Chọn một bức ảnh chụp đám đông có sẵn để xem kết quả tức thì.
-   * *Tải video:* Tải lên file video ngắn, video sẽ tự phát và nhận diện từng khung hình.
-   * *Webcam trực tiếp:* Sử dụng camera máy tính của bạn để nhận diện thời gian thực.
-2. **Cấu hình hiển thị:** Bật/tắt các checkbox tùy chọn hiển thị HUD (Bounding Box, Landmarks, Lớp phủ mặt nạ, Tên ID, Điểm tin cậy, Trạng thái chất lượng) trực tiếp trên camera.
-3. **Thanh trượt ngưỡng tin cậy:** Kéo thanh trượt để thay đổi ngưỡng lọc đối tượng (Confidence). Các khuôn mặt có độ tin cậy thấp hơn ngưỡng sẽ tự động bị ẩn đi.
-4. **Chọn mô hình AI:** Chuyển đổi linh hoạt giữa backbone MobileNet (nhanh, mượt) và ResNet50 (chính xác cao cho đám đông dày đặc).
-5. **Chụp Evidence (Snapshot):** Click vào một khuôn mặt bất kỳ ở thanh Gallery phía dưới để khóa mục tiêu (Focus), sau đó nhấn nút "Chụp Evidence" để tự động tải về đầy đủ hồ sơ bằng chứng của mục tiêu đó.
+1. **Chọn nguồn dữ liệu:** Tại bảng điều khiển bên phải, chọn nguồn camera tương ứng (ảnh tĩnh, file video MP4/AVI, hoặc Webcam USB trực tiếp).
+2. **Cấu hình hiển thị:** Bật/tắt các checkbox HUD (Bounding Box, Landmarks, Mặt nạ U-Net, Target ID, Điểm tin cậy, Chất lượng, Âm thanh).
+3. **Ngưỡng tin cậy:** Kéo thanh trượt **"Ngưỡng tin cậy tối thiểu"** (mặc định **0.60**) để lọc các phát hiện có confidence thấp.
+4. **Kích thước mặt tối thiểu:** Kéo thanh trượt **"Kích thước mặt tối thiểu (px)"** (mặc định **36px**, range 20–200px) để kiểm soát ngưỡng bộ lọc hình học. Tăng giá trị này để giảm false positive trên bảng hiệu hoặc các vật thể nhỏ.
+5. **Chọn mô hình AI:** Chuyển đổi giữa backbone **MobileNet** (nhanh, ưu tiên live stream) và **ResNet50** (chính xác hơn cho đám đông dày đặc).
+6. **Gallery mục tiêu:** Panel "Mục tiêu phát hiện" hiển thị tất cả khuôn mặt trong phiên. Khuôn mặt đã rời camera hiển thị badge xám **OFFLINE**. Nhấn "🗑️ Dọn dẹp nhật ký" để xóa toàn bộ lịch sử và bắt đầu phiên mới.
+7. **Chụp Evidence:** Click nút "Chụp evidence" để tải về hồ sơ bằng chứng đầy đủ của phiên (ảnh toàn cảnh + crop PNG trong suốt + file JSON thông số).
+
+---
+
+## ⚙️ Biến Môi Trường & Cấu Hình
+
+| Biến | Mặc định | Mô tả |
+|---|---|---|
+| `DETECTOR_INTERVAL` | `4` | Chạy RetinaFace mỗi N frame. Giảm xuống `2` nếu muốn chính xác hơn (đổi lấy FPS thấp hơn). |
+| `ONNX_INTRA_OP_THREADS` | `0` (auto) | Số luồng CPU cho ONNX Runtime inference. |
+
+Đặt trong file `.env` hoặc `export DETECTOR_INTERVAL=2` trước khi chạy server.
+
+---
+
+## 🧪 Chạy Kiểm Thử
+
+```bash
+pytest
+```
+
+Bộ test hiện tại gồm **21 test cases** bao gồm:
+- Benchmark hiệu năng (latency & FPS)
+- Integration test API `/detect`
+- Model test (detector và segmenter)
+- Unit test `face_quality` (occlusion, pose, score)
+
+---
+
+## Phụ Thuộc Chính
+
+| Thư viện | Mục đích |
+|---|---|
+| `fastapi` + `uvicorn` | Web framework & ASGI server |
+| `onnxruntime` | Chạy RetinaFace & U-Net ONNX (CPU tăng tốc) |
+| `opencv-python` | Xử lý ảnh, vẽ annotations |
+| `torch` + `torchvision` | Giải mã hình học legacy, export ONNX |
+| `scipy` | Hungarian Algorithm (linear_sum_assignment) cho SORT tracker |
+| `numpy` | Xử lý ma trận & mặt nạ nhị phân |
+| `pillow` | Encode/decode ảnh trong testing |
