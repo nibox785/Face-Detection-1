@@ -20,7 +20,7 @@ from scipy.optimize import linear_sum_assignment
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 N_HIT_CONFIRM   = 2       # Consecutive detections before a track is shown
-MAX_MISS_SECS   = 1.0     # Seconds without a detector match before eviction
+MAX_MISS_SECS   = 3.0     # Seconds without a detector match before eviction
 MIN_IOU_MATCH   = 0.10    # Minimum IoU to accept a Hungarian assignment
 MIN_FACE_PX     = 36      # Minimum face side length in pixels (geometric filter)
 MAX_ASPECT_RATIO = 2.5    # Max w/h or h/w allowed (geometric filter)
@@ -171,7 +171,7 @@ class FaceTracker:
         current_time = time.time()
 
         # Reset on long idle
-        if current_time - self.last_update_time > 2.0:
+        if current_time - self.last_update_time > 10.0:
             self.tracks.clear()
             self.tentative.clear()
             self.next_track_id = 1

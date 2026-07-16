@@ -99,7 +99,7 @@ File: `backend/utils/tracker.py` → tentative tracks logic
 - Detection chưa khớp với track nào → Tạo **tentative track** (chưa hiển thị).
 - Mỗi lần detector tiếp theo ghép thành công → `hit_streak += 1`.
 - Khi `hit_streak ≥ N_HIT_CONFIRM = 2` → **Promote** lên confirmed track → Bắt đầu hiển thị.
-- Tentative track không được xác nhận trong `MAX_MISS_SECS = 1.0s` → Bị xóa.
+- Tentative track không được xác nhận trong `MAX_MISS_SECS = 3.0s` → Bị xóa.
 
 ---
 
@@ -142,7 +142,7 @@ File: `backend/quality/face_quality.py` → `analyze_face_quality()`
 ## Bước 9: Track Eviction
 
 Track bị thu hồi khi:
-- `current_time - last_match_time > MAX_MISS_SECS (1.0s)` trên **cả** detector frames và skip frames.
+- `current_time - last_match_time > MAX_MISS_SECS (3.0s)` trên **cả** detector frames và skip frames.
 
 `last_match_time` **chỉ** được cập nhật khi detector chạy và ghép thành công — không bị làm mới bởi velocity prediction.
 

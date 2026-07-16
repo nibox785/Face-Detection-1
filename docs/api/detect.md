@@ -110,4 +110,4 @@ Khi API được gọi, backend thực hiện theo quy trình:
 > **Hit-streak gate**: Track mới cần ≥ 2 frame liên tiếp phát hiện mới được xác nhận. Điều này có nghĩa là lần đầu bật camera, mục tiêu sẽ xuất hiện ở frame thứ 2 (không phải frame đầu tiên). Đây là hành vi by-design để chống false positive.
 
 > [!NOTE]
-> **frame_counter và `last_match_time`**: Track bị thu hồi (evicted) sau `MAX_MISS_SECS = 1.0` giây kể từ lần detector cuối cùng ghép thành công. Khi khuôn mặt rời khỏi camera, box sẽ tự biến mất sau tối đa 1 giây.
+> **frame_counter và `last_match_time`**: Track bị thu hồi (evicted) sau `MAX_MISS_SECS = 3.0` giây kể từ lần detector cuối cùng ghép thành công. Khi khuôn mặt rời khỏi camera, box sẽ tự biến mất sau tối đa 3 giây.

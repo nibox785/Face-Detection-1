@@ -72,7 +72,7 @@ So với Euclidean greedy cũ: **Không còn ID swap** khi 2 người đi gần 
 
 #### E. last_match_time Eviction
 - `last_match_time` chỉ được cập nhật bởi detector (không bởi velocity predictor).
-- Track bị thu hồi sau `MAX_MISS_SECS = 1.0s` không có detector match.
+- Track bị thu hồi sau `MAX_MISS_SECS = 3.0s` không có detector match.
 - Loại bỏ hoàn toàn hiện tượng "ghost box" (box ma bị kẹt).
 
 ---
@@ -82,7 +82,7 @@ So với Euclidean greedy cũ: **Không còn ID swap** khi 2 người đi gần 
 | Hằng số | Giá trị mặc định | Ý nghĩa |
 |---|---|---|
 | `N_HIT_CONFIRM` | `2` | Số frame liên tiếp để xác nhận track |
-| `MAX_MISS_SECS` | `1.0` | Giây tối đa chờ detector match trước khi evict |
+| `MAX_MISS_SECS` | `3.0` | Giây tối đa chờ detector match trước khi evict |
 | `MIN_IOU_MATCH` | `0.10` | IoU tối thiểu để chấp nhận Hungarian match |
 | `MIN_FACE_PX` | `36` | Kích thước pixel tối thiểu (có thể override qua API) |
 | `MAX_ASPECT_RATIO` | `2.5` | Tỉ lệ w/h tối đa |
